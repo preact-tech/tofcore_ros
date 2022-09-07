@@ -1,0 +1,5 @@
+repositories:
+  libt10:
+    type: git
+    url: git@bitbucket.org:preact-tech/libt10
+    version: develop
