@@ -15,7 +15,6 @@
 #include <truesense_msgs/msg/frame.hpp>
 
 using namespace std::chrono_literals;
-using std::placeholders::_1;
 
 constexpr double SENSOR_PIXEL_SIZE_MM = 0.02; // camera sensor pixel size 20x20 um
 constexpr int WIDTH = 320;
@@ -52,7 +51,7 @@ T10Sensor::T10Sensor()
   this->declare_parameter(PARAM_STREAM_TYPE, "distance_amplitude");
   // Setup a callback so that we can react to parameter changes from the outside world.
   parameters_callback_handle_ = this->add_on_set_parameters_callback(
-      std::bind(&T10Sensor::on_set_parameters_callback, this, _1));
+      std::bind(&T10Sensor::on_set_parameters_callback, this, std::placeholders::_1));
 
   // Update all parameters
   auto params = this->get_parameters(this->list_parameters({}, 1).names);
