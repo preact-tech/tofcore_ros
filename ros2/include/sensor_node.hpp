@@ -31,7 +31,7 @@ class T10Sensor : public rclcpp::Node
     t10utils::CartesianTransform cartesianTransform_;
     int lensCenterOffsetX_ = 0;
     int lensCenterOffsetY_ = 0;
-    int lensType_ = 1;  //0- wide field, 1- standard field, 2 - narrow field
+    int lensType_ = 0;  //0- wide field, 1- standard field, 2 - narrow field
 
   public:
     T10Sensor();
@@ -42,13 +42,13 @@ class T10Sensor : public rclcpp::Node
     rcl_interfaces::msg::SetParametersResult on_set_parameters_callback(
         const std::vector<rclcpp::Parameter> &parameters);
 
-    void publish_amplData(const t10utils::Frame& frame, rclcpp::Publisher<sensor_msgs::msg::Image>& pub);
+    void publish_amplData(const t10utils::Frame& frame, rclcpp::Publisher<sensor_msgs::msg::Image>& pub, const rclcpp::Time& stamp);
 
-    void publish_distData(const t10utils::Frame& frame, rclcpp::Publisher<sensor_msgs::msg::Image>& pub);
+    void publish_distData(const t10utils::Frame& frame, rclcpp::Publisher<sensor_msgs::msg::Image>& pub, const rclcpp::Time& stamp);
 
-    void publish_pointCloud(const t10utils::Frame& frame, rclcpp::Publisher<sensor_msgs::msg::PointCloud2>& pub);
+    void publish_pointCloud(const t10utils::Frame& frame, rclcpp::Publisher<sensor_msgs::msg::PointCloud2>& pub, const rclcpp::Time& stamp);
     
-    void publish_DCSData(const t10utils::Frame &frame, rclcpp::Publisher<truesense_msgs::msg::Frame> &pub);
+    void publish_DCSData(const t10utils::Frame &frame, rclcpp::Publisher<truesense_msgs::msg::Frame> &pub, const rclcpp::Time& stamp);
 
     void updateFrame(const t10utils::Frame& frame);
 };

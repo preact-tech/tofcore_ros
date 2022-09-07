@@ -49,7 +49,7 @@ T10Sensor::T10Sensor()
 
   // Setup ROS parameters
 
-  this->declare_parameter(PARAM_STREAM_TYPE, "distance");
+  this->declare_parameter(PARAM_STREAM_TYPE, "distance_amplitude");
   // Setup a callback so that we can react to parameter changes from the outside world.
   parameters_callback_handle_ = this->add_on_set_parameters_callback(
       std::bind(&T10Sensor::on_set_parameters_callback, this, _1));
@@ -62,6 +62,11 @@ T10Sensor::T10Sensor()
 rcl_interfaces::msg::SetParametersResult T10Sensor::on_set_parameters_callback(
     const std::vector<rclcpp::Parameter> &parameters)
 {
+  interface_.stopStream();
+
+  interface_.setIntegrationTime(500, 0, 0, 0);
+  interface_.setModulation(0, 0);
+
   for (const auto &parameter : parameters)
   {
     if (parameter.get_name() == PARAM_STREAM_TYPE)
@@ -85,7 +90,6 @@ rcl_interfaces::msg::SetParametersResult T10Sensor::on_set_parameters_callback(
       }
       else if (value == "dcs")
       {
-        interface_.stopStream();
         interface_.streamDCS();
       }
       else
@@ -102,10 +106,10 @@ rcl_interfaces::msg::SetParametersResult T10Sensor::on_set_parameters_callback(
   return result;
 }
 
-void T10Sensor::publish_amplData(const t10utils::Frame &frame, rclcpp::Publisher<sensor_msgs::msg::Image> &pub)
+void T10Sensor::publish_amplData(const t10utils::Frame &frame, rclcpp::Publisher<sensor_msgs::msg::Image> &pub, const rclcpp::Time& stamp)
 {
   sensor_msgs::msg::Image img;
-  img.header.stamp = this->now();
+  img.header.stamp = stamp;
   img.header.frame_id = "unknown";
   img.height = static_cast<uint32_t>(frame.height);
   img.width = static_cast<uint32_t>(frame.width);
@@ -116,10 +120,10 @@ void T10Sensor::publish_amplData(const t10utils::Frame &frame, rclcpp::Publisher
   pub.publish(img);
 }
 
-void T10Sensor::publish_distData(const t10utils::Frame &frame, rclcpp::Publisher<sensor_msgs::msg::Image> &pub)
+void T10Sensor::publish_distData(const t10utils::Frame &frame, rclcpp::Publisher<sensor_msgs::msg::Image> &pub, const rclcpp::Time& stamp)
 {
   sensor_msgs::msg::Image img;
-  img.header.stamp = this->now();
+  img.header.stamp = stamp;
   img.header.frame_id = "unknown";
   img.height = static_cast<uint32_t>(frame.height);
   img.width = static_cast<uint32_t>(frame.width);
@@ -130,10 +134,10 @@ void T10Sensor::publish_distData(const t10utils::Frame &frame, rclcpp::Publisher
   pub.publish(img);
 }
 
-void T10Sensor::publish_pointCloud(const t10utils::Frame &frame, rclcpp::Publisher<sensor_msgs::msg::PointCloud2> &pub)
+void T10Sensor::publish_pointCloud(const t10utils::Frame &frame, rclcpp::Publisher<sensor_msgs::msg::PointCloud2> &pub, const rclcpp::Time& stamp)
 {
   sensor_msgs::msg::PointCloud2 cloud_msg{};
-  cloud_msg.header.stamp = this->now();
+  cloud_msg.header.stamp = stamp;
   cloud_msg.header.frame_id = "unknown";
   cloud_msg.is_dense = true;
   cloud_msg.is_bigendian = false;
@@ -249,14 +253,12 @@ void T10Sensor::publish_pointCloud(const t10utils::Frame &frame, rclcpp::Publish
 }
 
 
-void T10Sensor::publish_DCSData(const t10utils::Frame &frame, rclcpp::Publisher<truesense_msgs::msg::Frame> &pub)
+void T10Sensor::publish_DCSData(const t10utils::Frame &frame, rclcpp::Publisher<truesense_msgs::msg::Frame> &pub, const rclcpp::Time& stamp)
 {
-  auto timestamp = this->now();
-
   if(frame.dataType == t10utils::Frame::DCS) {
     for(auto i = 0; i != 4; ++i) {
         truesense_msgs::msg::Frame img;
-        img.header.stamp = this->now();
+        img.header.stamp = stamp;
         img.header.frame_id = "unknown";
         img.height = static_cast<uint32_t>(frame.height);
         img.width = static_cast<uint32_t>(frame.width);
@@ -289,7 +291,7 @@ void T10Sensor::publish_DCSData(const t10utils::Frame &frame, rclcpp::Publisher<
 
     //HACK: publish a fake ambient frame to test using this with the truesense::processor node.
     truesense_msgs::msg::Frame img;
-    img.header.stamp = this->now();
+    img.header.stamp = stamp;
     img.header.frame_id = "unknown";
     img.height = static_cast<uint32_t>(frame.height);
     img.width = static_cast<uint32_t>(frame.width);
@@ -320,28 +322,31 @@ void T10Sensor::publish_DCSData(const t10utils::Frame &frame, rclcpp::Publisher<
 
 void T10Sensor::updateFrame(const t10utils::Frame &frame)
 {
+  auto stamp = this->now();
   switch (frame.dataType)
   {
   case t10utils::Frame::GRAYSCALE:
   {
-    publish_amplData(frame, *pub_ambient_);
+    publish_amplData(frame, *pub_ambient_, stamp);
     break;
   }
   case t10utils::Frame::AMPLITUDE:
   {
-    publish_amplData(frame, *pub_amplitude_);
-    publish_distData(frame, *pub_depth_);
-    publish_pointCloud(frame, *pub_pcd_);
+    publish_amplData(frame, *pub_amplitude_, stamp);
+    publish_distData(frame, *pub_depth_, stamp);
+    publish_pointCloud(frame, *pub_pcd_, stamp);
     break;
   }
   case t10utils::Frame::DISTANCE:
   {
-    publish_distData(frame, *pub_depth_);
-    publish_pointCloud(frame, *pub_pcd_);
+    publish_distData(frame, *pub_depth_, stamp);
+    publish_pointCloud(frame, *pub_pcd_, stamp);
+    break;
   }
   case t10utils::Frame::DCS:
   {
-    publish_DCSData(frame, *pub_dcs_);
+    publish_DCSData(frame, *pub_dcs_, stamp);
+    break;
   }
   }
 }
