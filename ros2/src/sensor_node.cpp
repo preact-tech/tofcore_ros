@@ -33,7 +33,7 @@ T10Sensor::T10Sensor()
 
   // Setup topic pulbishers
   pub_ambient_ = this->create_publisher<sensor_msgs::msg::Image>("ambient", pub_qos);
-  pub_depth_ = this->create_publisher<sensor_msgs::msg::Image>("depth", pub_qos);
+  pub_distance_ = this->create_publisher<sensor_msgs::msg::Image>("distance", pub_qos);
   pub_amplitude_ = this->create_publisher<sensor_msgs::msg::Image>("amplitude", pub_qos);
   pub_pcd_ = this->create_publisher<sensor_msgs::msg::PointCloud2>("points", pub_qos);
   for(size_t i = 0; i != pub_dcs_.size(); i++) {
@@ -155,7 +155,7 @@ void T10Sensor::publish_pointCloud(const t10utils::Frame &frame, rclcpp::Publish
       "amplitude", 1, sensor_msgs::msg::PointField::UINT16,
       "ambient", 1, sensor_msgs::msg::PointField::INT16,
       "valid", 1, sensor_msgs::msg::PointField::UINT8,
-      "phase", 1, sensor_msgs::msg::PointField::UINT16);
+      "distance", 1, sensor_msgs::msg::PointField::UINT16);
 
   // Note: For some reason setPointCloudFields doesn't set row_step
   //      and resets msg height and width so setup them here.
@@ -169,7 +169,7 @@ void T10Sensor::publish_pointCloud(const t10utils::Frame &frame, rclcpp::Publish
   sensor_msgs::PointCloud2Iterator<uint16_t> it_amplitude{cloud_msg, "amplitude"};
   sensor_msgs::PointCloud2Iterator<int16_t> it_ambient{cloud_msg, "ambient"};
   sensor_msgs::PointCloud2Iterator<uint8_t> it_valid{cloud_msg, "valid"};
-  sensor_msgs::PointCloud2Iterator<uint16_t> it_phase{cloud_msg, "phase"};
+  sensor_msgs::PointCloud2Iterator<uint16_t> it_phase{cloud_msg, "distance"};
 
   auto it_d = frame.distData.begin();
   auto it_a = frame.amplData.begin();
@@ -331,13 +331,13 @@ void T10Sensor::updateFrame(const t10utils::Frame &frame)
   case t10utils::Frame::AMPLITUDE:
   {
     publish_amplData(frame, *pub_amplitude_, stamp);
-    publish_distData(frame, *pub_depth_, stamp);
+    publish_distData(frame, *pub_distance_, stamp);
     publish_pointCloud(frame, *pub_pcd_, stamp);
     break;
   }
   case t10utils::Frame::DISTANCE:
   {
-    publish_distData(frame, *pub_depth_, stamp);
+    publish_distData(frame, *pub_distance_, stamp);
     publish_pointCloud(frame, *pub_pcd_, stamp);
     break;
   }

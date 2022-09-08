@@ -23,7 +23,7 @@ class T10Sensor : public rclcpp::Node
 {
   private:
     rclcpp::Publisher<sensor_msgs::msg::Image>::SharedPtr pub_ambient_;
-    rclcpp::Publisher<sensor_msgs::msg::Image>::SharedPtr pub_depth_;
+    rclcpp::Publisher<sensor_msgs::msg::Image>::SharedPtr pub_distance_;
     rclcpp::Publisher<sensor_msgs::msg::Image>::SharedPtr pub_amplitude_;
     rclcpp::Publisher<sensor_msgs::msg::PointCloud2>::SharedPtr pub_pcd_;
     std::array<rclcpp::Publisher<sensor_msgs::msg::Image>::SharedPtr, 4> pub_dcs_;

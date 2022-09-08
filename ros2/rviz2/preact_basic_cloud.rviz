@@ -75,7 +75,7 @@ Visualization Manager:
         Depth: 5
         Durability Policy: Volatile
         History Policy: Keep Last
-        Reliability Policy: Reliable
+        Reliability Policy: Best Effort
         Value: /truesense/points
       Use Fixed Frame: true
       Use rainbow: true
@@ -91,7 +91,7 @@ Visualization Manager:
         Depth: 5
         Durability Policy: Volatile
         History Policy: Keep Last
-        Reliability Policy: Reliable
+        Reliability Policy: Best Effort
         Value: /truesense/amplitude
       Value: true
     - Class: rviz_default_plugins/Image
@@ -99,14 +99,14 @@ Visualization Manager:
       Max Value: 1
       Median window: 5
       Min Value: 0
-      Name: Depth
+      Name: Distance
       Normalize Range: true
       Topic:
         Depth: 5
         Durability Policy: Volatile
         History Policy: Keep Last
-        Reliability Policy: Reliable
-        Value: /truesense/depth
+        Reliability Policy: Best Effort
+        Value: /truesense/distance
       Value: true
     - Class: rviz_default_plugins/Image
       Enabled: true
@@ -119,7 +119,7 @@ Visualization Manager:
         Depth: 5
         Durability Policy: Volatile
         History Policy: Keep Last
-        Reliability Policy: Reliable
+        Reliability Policy: Best Effort
         Value: /truesense/ambient
       Value: true
   Enabled: true
