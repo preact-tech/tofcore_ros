@@ -13,7 +13,6 @@ find_package(ament_cmake REQUIRED)
 find_package(rclcpp REQUIRED)
 find_package(std_msgs REQUIRED)
 find_package(sensor_msgs REQUIRED)
-find_package(truesense_msgs REQUIRED)
 
 find_package(T10Utils)
 if(NOT TARGET T10Utils::T10Utils)
@@ -31,8 +30,8 @@ target_include_directories(t10_sensor PUBLIC
   $<INSTALL_INTERFACE:include>
   )
 target_compile_features(t10_sensor PUBLIC c_std_99 cxx_std_17)  # Require C99 and C++17
-ament_target_dependencies(t10_sensor rclcpp std_msgs sensor_msgs truesense_msgs)
-target_link_libraries(t10_sensor t10utils) # T10Utils::T10Utils)
+ament_target_dependencies(t10_sensor rclcpp std_msgs sensor_msgs)
+target_link_libraries(t10_sensor t10utils)
 
 install(TARGETS t10_sensor
   DESTINATION lib/${PROJECT_NAME})

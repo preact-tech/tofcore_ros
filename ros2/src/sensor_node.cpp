@@ -12,7 +12,7 @@
 #include <sensor_msgs/msg/point_cloud2.hpp>
 #include <sensor_msgs/msg/image.hpp>
 #include <sensor_msgs/point_cloud2_iterator.hpp>
-#include <truesense_msgs/msg/frame.hpp>
+#include <sensor_msgs/image_encodings.hpp>
 
 using namespace std::chrono_literals;
 
@@ -36,7 +36,11 @@ T10Sensor::T10Sensor()
   pub_depth_ = this->create_publisher<sensor_msgs::msg::Image>("depth", pub_qos);
   pub_amplitude_ = this->create_publisher<sensor_msgs::msg::Image>("amplitude", pub_qos);
   pub_pcd_ = this->create_publisher<sensor_msgs::msg::PointCloud2>("points", pub_qos);
-  pub_dcs_ = this->create_publisher<truesense_msgs::msg::Frame>("frame_raw", pub_qos);
+  for(size_t i = 0; i != pub_dcs_.size(); i++) {
+    std::string topic {"dcs"};
+    topic += std::to_string(i);
+    pub_dcs_[i] = this->create_publisher<sensor_msgs::msg::Image>(topic, pub_qos);
+  }
 
   // connect to interface
   (void)interface_.subscribeCameraInfo([&](std::shared_ptr<t10utils::CameraInfo> ci) -> void
@@ -112,7 +116,7 @@ void T10Sensor::publish_amplData(const t10utils::Frame &frame, rclcpp::Publisher
   img.header.frame_id = "unknown";
   img.height = static_cast<uint32_t>(frame.height);
   img.width = static_cast<uint32_t>(frame.width);
-  img.encoding = "mono16";
+  img.encoding = sensor_msgs::image_encodings::MONO16;
   img.step = img.width * frame.px_size;
   img.is_bigendian = 0;
   img.data = frame.amplData;
@@ -126,7 +130,7 @@ void T10Sensor::publish_distData(const t10utils::Frame &frame, rclcpp::Publisher
   img.header.frame_id = "unknown";
   img.height = static_cast<uint32_t>(frame.height);
   img.width = static_cast<uint32_t>(frame.width);
-  img.encoding = "mono16";
+  img.encoding = sensor_msgs::image_encodings::MONO16;
   img.step = img.width * frame.px_size;
   img.is_bigendian = 0;
   img.data = frame.distData;
@@ -252,70 +256,65 @@ void T10Sensor::publish_pointCloud(const t10utils::Frame &frame, rclcpp::Publish
 }
 
 
-void T10Sensor::publish_DCSData(const t10utils::Frame &frame, rclcpp::Publisher<truesense_msgs::msg::Frame> &pub, const rclcpp::Time& stamp)
+void T10Sensor::publish_DCSData(const t10utils::Frame &frame, const rclcpp::Time& stamp)
 {
+
+  //TODO Need to figure out the best way to publish image meta-data including:
+  //  temperature
+  //  modulation_frequency
+  //  integration_time
+  //  binning
+  //  vled_mv
+  //  chip_id
+  //
+  // Also need to figure out how to publish an ambient frame which will be required for use with the calibration app.
+
   if(frame.dataType == t10utils::Frame::DCS) {
     for(auto i = 0; i != 4; ++i) {
-        truesense_msgs::msg::Frame img;
+        sensor_msgs::msg::Image img;
         img.header.stamp = stamp;
         img.header.frame_id = "unknown";
         img.height = static_cast<uint32_t>(frame.height);
         img.width = static_cast<uint32_t>(frame.width);
-        img.encoding = "";
-        img.step = frame.width*2;
-        img.index = frame.frame_id;
-        img.type = i;
-        img.temperature = std::numeric_limits<float>::quiet_NaN(); //TODO Need to get the real temperature in degrees C
-        img.modulation_frequency = 12; //TODO need to get mod freq in MHz
-        img.integration_time = 200;  //TODO need to get the integration time in microseconds
-        // # Binning refers here to any camera setting which combines rectangular
-        // #  neighborhoods of pixels into larger "super-pixels." It reduces the
-        // #  resolution of the output image to
-        // #  (width / binning_h) x (height / binning_v).
-        // # The default values binning_h = binning_v = 0 is considered the same
-        // #  as binning_h = binning_v = 1 (no subsampling).
-        img.binning_h = 0;
-        img.binning_v = 0;
-        img.config_index = 0; //This is the config index from Truesense sensors, really Not useful in this case.
-        img.vled_mv = 0; //TODO Need to get the real value.
-        img.chip_id = "deedbeef"; //TODO need to calcualte the chipid from teh sensor info (wafer id, etc)
-
+        img.encoding = sensor_msgs::image_encodings::MONO16;
+        img.step = img.width * frame.px_size;
+        img.is_bigendian = 0;
         auto frame_size = img.step * img.height;
-        img.data.resize(img.step * img.height);
+        img.data.resize(frame_size);
         auto begin = frame.dcsData.begin() + (i*frame_size);
         auto end = begin + frame_size;
         std::copy(begin, end, img.data.begin());
-        pub.publish(img);
+        pub_dcs_[i]->publish(img);
     }
 
-    //HACK: publish a fake ambient frame to test using this with the truesense::processor node.
-    truesense_msgs::msg::Frame img;
-    img.header.stamp = stamp;
-    img.header.frame_id = "unknown";
-    img.height = static_cast<uint32_t>(frame.height);
-    img.width = static_cast<uint32_t>(frame.width);
-    img.encoding = "";
-    img.step = frame.width*2;
-    img.index = frame.frame_id;
-    img.type = truesense_msgs::msg::Frame::TYPE_AMBIENT;
-    img.temperature = std::numeric_limits<float>::quiet_NaN(); //TODO Need to get the real temperature in degrees C
-    img.modulation_frequency = 12; //TODO need to get mod freq in MHz
-    img.integration_time = 200;  //TODO need to get the integration time in microseconds
-// # Binning refers here to any camera setting which combines rectangular
-// #  neighborhoods of pixels into larger "super-pixels." It reduces the
-// #  resolution of the output image to
-// #  (width / binning_h) x (height / binning_v).
-// # The default values binning_h = binning_v = 0 is considered the same
-// #  as binning_h = binning_v = 1 (no subsampling).
-    img.binning_h = 0;
-    img.binning_v = 0;
-    img.config_index = 0; //This is the config index from Truesense sensors, really Not useful in this case.
-    img.vled_mv = 0; //TODO Need to get the real value.
-    img.chip_id = "deedbeef"; //TODO need to calcualte the chipid from the sensor info (wafer id, etc)
+//     //HACK: publish a fake ambient frame to test using this with the truesense::processor node.
+//     truesense_msgs::msg::Frame img;
+//     img.header.stamp = stamp;
+//     img.header.frame_id = "unknown";
+//     img.height = static_cast<uint32_t>(frame.height);
+//     img.width = static_cast<uint32_t>(frame.width);
+//     img.encoding = "";
+//     img.step = frame.width*2;
+//     img.index = frame.frame_id;
+//     img.type = truesense_msgs::msg::Frame::TYPE_AMBIENT;
+//     img.temperature = std::numeric_limits<float>::quiet_NaN(); //TODO Need to get the real temperature in degrees C
+//     img.modulation_frequency = 12; //TODO need to get mod freq in MHz
+//     img.integration_time = 200;  //TODO need to get the integration time in microseconds
+// // # Binning refers here to any camera setting which combines rectangular
+// // #  neighborhoods of pixels into larger "super-pixels." It reduces the
+// // #  resolution of the output image to
+// // #  (width / binning_h) x (height / binning_v).
+// // # The default values binning_h = binning_v = 0 is considered the same
+// // #  as binning_h = binning_v = 1 (no subsampling).
+//     img.binning_h = 0;
+//     img.binning_v = 0;
+//     img.config_index = 0; //This is the config index from Truesense sensors, really Not useful in this case.
+//     img.vled_mv = 0; //TODO Need to get the real value.
+//     img.chip_id = "deedbeef"; //TODO need to calcualte the chipid from the sensor info (wafer id, etc)
 
-    img.data.resize(img.step * img.height, 0);
-    pub.publish(img);
-  }
+//     img.data.resize(img.step * img.height, 0);
+//     pub.publish(img);
+   }
 }
 
 
@@ -344,7 +343,7 @@ void T10Sensor::updateFrame(const t10utils::Frame &frame)
   }
   case t10utils::Frame::DCS:
   {
-    publish_DCSData(frame, *pub_dcs_, stamp);
+    publish_DCSData(frame, stamp);
     break;
   }
   }

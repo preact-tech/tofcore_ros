@@ -25,7 +25,7 @@ class T10Sensor : public rclcpp::Node
     rclcpp::Publisher<sensor_msgs::msg::Image>::SharedPtr pub_depth_;
     rclcpp::Publisher<sensor_msgs::msg::Image>::SharedPtr pub_amplitude_;
     rclcpp::Publisher<sensor_msgs::msg::PointCloud2>::SharedPtr pub_pcd_;
-    rclcpp::Publisher<truesense_msgs::msg::Frame>::SharedPtr pub_dcs_;
+    std::array<rclcpp::Publisher<sensor_msgs::msg::Image>::SharedPtr, 4> pub_dcs_;
 
     t10utils::Sensor interface_;
     t10utils::CartesianTransform cartesianTransform_;
@@ -48,7 +48,7 @@ class T10Sensor : public rclcpp::Node
 
     void publish_pointCloud(const t10utils::Frame& frame, rclcpp::Publisher<sensor_msgs::msg::PointCloud2>& pub, const rclcpp::Time& stamp);
     
-    void publish_DCSData(const t10utils::Frame &frame, rclcpp::Publisher<truesense_msgs::msg::Frame> &pub, const rclcpp::Time& stamp);
+    void publish_DCSData(const t10utils::Frame &frame, const rclcpp::Time& stamp);
 
     void updateFrame(const t10utils::Frame& frame);
 };

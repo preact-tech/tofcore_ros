@@ -6,9 +6,7 @@
 
 - A release of ROS2 installed and active. So far all testing has been done with
   with the Galactic release but things should work with any recent ROS2 release.
-- [t10utils](https://bitbucket.org/preact-tech/libt10/src/develop/) library built and/or installed.
-- truesense_msgs ROS package installed, this can be done by installing a .deb package release or cloning and building the source
-  as part of your ROS workspace.
+- [t10utils](https://bitbucket.org/preact-tech/libt10/src/develop/) either built and installed to CMAKE_INSTALL_PREFIX or cloned to the subdirectory libt10.
 
 ### Building
 
@@ -28,7 +26,6 @@ ros2 launch t10 pcd-test.launch.py
 
 You can use `dcs-test.launch.py` to test streaming DCS frames from the device and have the `truesense_processor` node generate distance frames
 on the PC. This same pattern can be used to test other processing algorithms that have been turned into ROS nodes. 
-
 
 A couple of things to note:
 
