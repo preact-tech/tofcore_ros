@@ -29,6 +29,14 @@ constexpr auto PARAM_STREAM_TYPE = "stream_type";
 constexpr auto PARAM_INTEGRATION_TIME0 = "integration_time0";
 constexpr auto PARAM_INTEGRATION_TIME1 = "integration_time1";
 constexpr auto PARAM_INTEGRATION_TIME2 = "integration_time2";
+constexpr auto PARAM_HDR_MODE = "hdr_mode";
+
+/// Quick helper function that return true if the string haystack starts with the string needle 
+bool begins_with(const std::string& needle, const std::string& haystack ) 
+{
+  return haystack.rfind(needle, 0) == 0;
+}
+
 
 T10Sensor::T10Sensor()
     : Node("t10_sensor", "t10")
@@ -61,6 +69,7 @@ T10Sensor::T10Sensor()
   this->declare_parameter(PARAM_INTEGRATION_TIME0, 100);
   this->declare_parameter(PARAM_INTEGRATION_TIME1, 0);
   this->declare_parameter(PARAM_INTEGRATION_TIME2, 0);
+  this->declare_parameter(PARAM_HDR_MODE, "off");
 
   // Setup a callback so that we can react to parameter changes from the outside world.
   parameters_callback_handle_ = this->add_on_set_parameters_callback(
@@ -87,9 +96,13 @@ rcl_interfaces::msg::SetParametersResult T10Sensor::on_set_parameters_callback(
     {
       this->apply_stream_type_param(parameter, result);
     }
-    else if (parameter.get_name() == PARAM_INTEGRATION_TIME0)
+    else if (begins_with("integration_time", parameter.get_name()))
     {
       this->apply_integration_time_param(parameter, result);
+    }
+    else if( parameter.get_name() == PARAM_HDR_MODE)
+    {
+      this->apply_hdr_mode_param(parameter, result);
     }
   }
   return result;
@@ -135,13 +148,38 @@ void T10Sensor::apply_integration_time_param(const rclcpp::Parameter& parameter,
   {
     result.successful = false;
     result.reason = parameter.get_name() + " value is out of range";
-  } else 
+  } 
+  else 
   {
     uint16_t int_times[3] = {0};
     int_times[0] = (parameter.get_name() == PARAM_INTEGRATION_TIME0) ? value : get_parameter(PARAM_INTEGRATION_TIME0).as_int();
     int_times[1] = (parameter.get_name() == PARAM_INTEGRATION_TIME1) ? value : get_parameter(PARAM_INTEGRATION_TIME1).as_int();
     int_times[2] = (parameter.get_name() == PARAM_INTEGRATION_TIME2) ? value : get_parameter(PARAM_INTEGRATION_TIME1).as_int();
     interface_.setIntegrationTime(int_times[0], int_times[1], int_times[2], 500/*hard code greyscale int time for now*/);
+  }
+}
+
+
+void T10Sensor::apply_hdr_mode_param(const rclcpp::Parameter& parameter, rcl_interfaces::msg::SetParametersResult& result) 
+{
+  auto value = parameter.as_string();
+  RCLCPP_INFO(this->get_logger(), "Handling parameter \"%s\" : %s", parameter.get_name().c_str(), value.c_str());
+  if(begins_with("s", value)) //spacital 
+  {
+    interface_.setHDRMode(1);
+  }
+  else if(begins_with("t", value)) //temporal
+  {
+    interface_.setHDRMode(2);
+  }
+  else if(begins_with("o", value)) //off
+  {
+    interface_.setHDRMode(0);
+  }
+  else
+  {
+    result.successful = false;
+    result.reason = parameter.get_name() + " value is out of range";
   }
 }
 
