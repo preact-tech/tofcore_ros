@@ -18,6 +18,7 @@
 #include <truesense_msgs/msg/frame.hpp>
 
 
+/// T10Sensor ROS2 node class for interacting with a T10 sensor/camera
 class T10Sensor : public rclcpp::Node
 {
   private:
@@ -34,6 +35,7 @@ class T10Sensor : public rclcpp::Node
     int lensType_ = 0;  //0- wide field, 1- standard field, 2 - narrow field
 
   public:
+    /// Standard constructor
     T10Sensor();
 
   private:
@@ -42,14 +44,19 @@ class T10Sensor : public rclcpp::Node
     rcl_interfaces::msg::SetParametersResult on_set_parameters_callback(
         const std::vector<rclcpp::Parameter> &parameters);
 
+    /// Publish received amplitude data in frame to the topic publisher pub with timestamp stamp.
     void publish_amplData(const t10utils::Frame& frame, rclcpp::Publisher<sensor_msgs::msg::Image>& pub, const rclcpp::Time& stamp);
 
+    /// Publish received distance data in frame to the topic publisher pub with timestamp stamp.
     void publish_distData(const t10utils::Frame& frame, rclcpp::Publisher<sensor_msgs::msg::Image>& pub, const rclcpp::Time& stamp);
 
+    /// Publish a PointCloud using distance data in frame to the topic publisher pub with timestamp stamp.
     void publish_pointCloud(const t10utils::Frame& frame, rclcpp::Publisher<sensor_msgs::msg::PointCloud2>& pub, const rclcpp::Time& stamp);
     
+    /// Publish a dcs data in frame to the four dcs topic publishers with timestamp stamp.
     void publish_DCSData(const t10utils::Frame &frame, const rclcpp::Time& stamp);
 
+    /// Callback method provided to the t10utils library to notify us when new frame data has come in
     void updateFrame(const t10utils::Frame& frame);
 };
 
