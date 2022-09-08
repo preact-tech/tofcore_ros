@@ -15,7 +15,6 @@
 #include <sensor_msgs/msg/point_cloud2.hpp>
 #include <sensor_msgs/msg/image.hpp>
 #include <sensor_msgs/point_cloud2_iterator.hpp>
-#include <truesense_msgs/msg/frame.hpp>
 
 
 /// T10Sensor ROS2 node class for interacting with a T10 sensor/camera
