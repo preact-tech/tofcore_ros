@@ -15,14 +15,20 @@
 #include <sensor_msgs/image_encodings.hpp>
 
 using namespace std::chrono_literals;
+using namespace std::string_literals;
 
 constexpr double SENSOR_PIXEL_SIZE_MM = 0.02; // camera sensor pixel size 20x20 um
 constexpr int WIDTH = 320;
 constexpr int WIDTH2 = 160;
 constexpr int HEIGHT = 240;
 constexpr int HEIGHT2 = 120;
+constexpr int32_t MIN_INTEGRATION_TIME = 0;
+constexpr int32_t MAX_INTEGRATION_TIME = 4000;
 
 constexpr auto PARAM_STREAM_TYPE = "stream_type";
+constexpr auto PARAM_INTEGRATION_TIME0 = "integration_time0";
+constexpr auto PARAM_INTEGRATION_TIME1 = "integration_time1";
+constexpr auto PARAM_INTEGRATION_TIME2 = "integration_time2";
 
 T10Sensor::T10Sensor()
     : Node("t10_sensor", "t10")
@@ -51,8 +57,11 @@ T10Sensor::T10Sensor()
   cartesianTransform_.initLensTransform(SENSOR_PIXEL_SIZE_MM, WIDTH, HEIGHT, lensCenterOffsetX_, lensCenterOffsetY_, lensType_);
 
   // Setup ROS parameters
-
   this->declare_parameter(PARAM_STREAM_TYPE, "distance_amplitude");
+  this->declare_parameter(PARAM_INTEGRATION_TIME0, 100);
+  this->declare_parameter(PARAM_INTEGRATION_TIME1, 0);
+  this->declare_parameter(PARAM_INTEGRATION_TIME2, 0);
+
   // Setup a callback so that we can react to parameter changes from the outside world.
   parameters_callback_handle_ = this->add_on_set_parameters_callback(
       std::bind(&T10Sensor::on_set_parameters_callback, this, std::placeholders::_1));
@@ -65,49 +74,77 @@ T10Sensor::T10Sensor()
 rcl_interfaces::msg::SetParametersResult T10Sensor::on_set_parameters_callback(
     const std::vector<rclcpp::Parameter> &parameters)
 {
-  interface_.stopStream();
-
-  interface_.setIntegrationTime(500, 0, 0, 0);
   interface_.setModulation(0, 0);
+
+  // assume success, if any parameter set below fails this will be changed
+  rcl_interfaces::msg::SetParametersResult result;
+  result.successful = true;
+  result.reason = "success";
 
   for (const auto &parameter : parameters)
   {
     if (parameter.get_name() == PARAM_STREAM_TYPE)
     {
-      auto value = parameter.as_string();
-      RCLCPP_INFO(this->get_logger(), "Handling parameter \"%s\" : \"%s\"", parameter.get_name().c_str(), value.c_str());
-      if (value == "distance")
-      {
-        interface_.stopStream();
-        interface_.streamDistance();
-      }
-      else if (value == "grayscale")
-      {
-        interface_.stopStream();
-        interface_.streamGrayscale();
-      }
-      else if (value == "distance_amplitude")
-      {
-        interface_.stopStream();
-        interface_.streamDistanceAmplitude();
-      }
-      else if (value == "dcs")
-      {
-        interface_.streamDCS();
-      }
-      else
-      {
-        RCLCPP_ERROR(this->get_logger(), "Unknown stream type: \"%s\"", value.c_str());
-      }
+      this->apply_stream_type_param(parameter, result);
+    }
+    else if (parameter.get_name() == PARAM_INTEGRATION_TIME0)
+    {
+      this->apply_integration_time_param(parameter, result);
     }
   }
-
-  rcl_interfaces::msg::SetParametersResult result;
-  result.successful = true;
-  result.reason = "success";
-  // Here update class attributes, do some actions, etc.
   return result;
 }
+
+void T10Sensor::apply_stream_type_param(const rclcpp::Parameter& parameter, rcl_interfaces::msg::SetParametersResult& result) 
+{
+  auto value = parameter.as_string();
+  RCLCPP_INFO(this->get_logger(), "Handling parameter \"%s\" : \"%s\"", parameter.get_name().c_str(), value.c_str());
+  if (value == "distance")
+  {
+    interface_.stopStream();
+    interface_.streamDistance();
+  }
+  else if (value == "grayscale")
+  {
+    interface_.stopStream();
+    interface_.streamGrayscale();
+  }
+  else if (value == "distance_amplitude")
+  {
+    interface_.stopStream();
+    interface_.streamDistanceAmplitude();
+  }
+  else if (value == "dcs")
+  {
+    interface_.streamDCS();
+  }
+  else
+  {
+    result.successful = false;
+    result.reason = "Unknown stream type: "s + value;
+    RCLCPP_ERROR(this->get_logger(), result.reason.c_str());
+  }
+}
+
+
+void T10Sensor::apply_integration_time_param(const rclcpp::Parameter& parameter, rcl_interfaces::msg::SetParametersResult& result) 
+{
+  auto value = parameter.as_int();
+  RCLCPP_INFO(this->get_logger(), "Handling parameter \"%s\" : %li", parameter.get_name().c_str(), value);
+  if (value < MIN_INTEGRATION_TIME || value > MAX_INTEGRATION_TIME) 
+  {
+    result.successful = false;
+    result.reason = parameter.get_name() + " value is out of range";
+  } else 
+  {
+    uint16_t int_times[3] = {0};
+    int_times[0] = (parameter.get_name() == PARAM_INTEGRATION_TIME0) ? value : get_parameter(PARAM_INTEGRATION_TIME0).as_int();
+    int_times[1] = (parameter.get_name() == PARAM_INTEGRATION_TIME1) ? value : get_parameter(PARAM_INTEGRATION_TIME1).as_int();
+    int_times[2] = (parameter.get_name() == PARAM_INTEGRATION_TIME2) ? value : get_parameter(PARAM_INTEGRATION_TIME1).as_int();
+    interface_.setIntegrationTime(int_times[0], int_times[1], int_times[2], 500/*hard code greyscale int time for now*/);
+  }
+}
+
 
 void T10Sensor::publish_amplData(const t10utils::Frame &frame, rclcpp::Publisher<sensor_msgs::msg::Image> &pub, const rclcpp::Time& stamp)
 {
