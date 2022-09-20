@@ -18,6 +18,7 @@ def generate_launch_description():
         'integration_time1' : LaunchConfiguration('int_time1'),
         'integration_time2' : LaunchConfiguration('int_time2'),
         'hdr_mode' : LaunchConfiguration('hdr_mode'),
+        'streaming' : LaunchConfiguration('streaming'),
         }],
         on_exit=Shutdown()
     )
@@ -45,8 +46,14 @@ def generate_launch_description():
 
     hdr_mode = DeclareLaunchArgument(
         'hdr_mode',
-        default_value='o',
+        default_value='temporal',
         description='HDR mode (off, temporal, spacetial')
+
+    streaming = DeclareLaunchArgument(
+        'streaming',
+        default_value='true',
+        description='enable or disable continuous streaming')
+
 
     timestamp = datetime.now().strftime("%Y_%m_%d-%H_%M_%S")
     bagfile_arg = DeclareLaunchArgument(
@@ -60,6 +67,7 @@ def generate_launch_description():
         int_time1,
         int_time2,
         hdr_mode,
+        streaming,
         bagfile_arg,
         ts_camera,
         record_process,

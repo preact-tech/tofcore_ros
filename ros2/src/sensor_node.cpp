@@ -30,6 +30,7 @@ constexpr auto PARAM_INTEGRATION_TIME0 = "integration_time0";
 constexpr auto PARAM_INTEGRATION_TIME1 = "integration_time1";
 constexpr auto PARAM_INTEGRATION_TIME2 = "integration_time2";
 constexpr auto PARAM_HDR_MODE = "hdr_mode";
+constexpr auto PARAM_STREAMING = "streaming";
 
 /// Quick helper function that return true if the string haystack starts with the string needle 
 bool begins_with(const std::string& needle, const std::string& haystack ) 
@@ -70,6 +71,7 @@ T10Sensor::T10Sensor()
   this->declare_parameter(PARAM_INTEGRATION_TIME1, 0);
   this->declare_parameter(PARAM_INTEGRATION_TIME2, 0);
   this->declare_parameter(PARAM_HDR_MODE, "off");
+  this->declare_parameter(PARAM_STREAMING, true);
 
   // Setup a callback so that we can react to parameter changes from the outside world.
   parameters_callback_handle_ = this->add_on_set_parameters_callback(
@@ -94,7 +96,12 @@ rcl_interfaces::msg::SetParametersResult T10Sensor::on_set_parameters_callback(
   {
     if (parameter.get_name() == PARAM_STREAM_TYPE)
     {
-      this->apply_stream_type_param(parameter, result);
+      bool streaming = true;
+      this->get_parameter(PARAM_STREAMING, streaming);
+      if (streaming)
+      {
+        this->apply_stream_type_param(parameter, result);
+      }
     }
     else if (begins_with("integration_time", parameter.get_name()))
     {
@@ -104,27 +111,29 @@ rcl_interfaces::msg::SetParametersResult T10Sensor::on_set_parameters_callback(
     {
       this->apply_hdr_mode_param(parameter, result);
     }
+    else if( parameter.get_name() == PARAM_STREAMING)
+    {
+      this->apply_streaming_param(parameter, result);
+    }
   }
   return result;
 }
 
-void T10Sensor::apply_stream_type_param(const rclcpp::Parameter& parameter, rcl_interfaces::msg::SetParametersResult& result) 
+
+void T10Sensor::apply_stream_type_param(const rclcpp::Parameter& parameter, rcl_interfaces::msg::SetParametersResult& result)
 {
   auto value = parameter.as_string();
   RCLCPP_INFO(this->get_logger(), "Handling parameter \"%s\" : \"%s\"", parameter.get_name().c_str(), value.c_str());
   if (value == "distance")
   {
-    interface_.stopStream();
     interface_.streamDistance();
   }
   else if (value == "grayscale")
   {
-    interface_.stopStream();
     interface_.streamGrayscale();
   }
   else if (value == "distance_amplitude")
   {
-    interface_.stopStream();
     interface_.streamDistanceAmplitude();
   }
   else if (value == "dcs")
@@ -182,6 +191,28 @@ void T10Sensor::apply_hdr_mode_param(const rclcpp::Parameter& parameter, rcl_int
     result.reason = parameter.get_name() + " value is out of range";
   }
 }
+
+
+void T10Sensor::apply_streaming_param(const rclcpp::Parameter& parameter, rcl_interfaces::msg::SetParametersResult& result) 
+{
+  try {
+    auto value = parameter.as_bool();
+    RCLCPP_INFO(this->get_logger(), "Handling parameter \"%s\" : %s", parameter.get_name().c_str(), (value ?"true":"false"));
+    if(value) {
+      rclcpp::Parameter stream_type;
+      rcl_interfaces::msg::SetParametersResult dummy_result;
+      (void)this->get_parameter(PARAM_STREAM_TYPE, stream_type);
+      this->apply_stream_type_param(stream_type, dummy_result);
+    } else {
+      interface_.stopStream();
+    }
+  }
+  catch(std::exception& e) {
+    result.successful = false;
+    result.reason = e.what();
+  }
+}
+
 
 
 void T10Sensor::publish_amplData(const t10utils::Frame &frame, rclcpp::Publisher<sensor_msgs::msg::Image> &pub, const rclcpp::Time& stamp)

@@ -58,9 +58,11 @@ class T10Sensor : public rclcpp::Node
     /// Callback method provided to the t10utils library to notify us when new frame data has come in
     void updateFrame(const t10utils::Frame& frame);
 
+    /// Helper methods to send parameter updates down to the sensor
     void apply_stream_type_param(const rclcpp::Parameter& parameter, rcl_interfaces::msg::SetParametersResult& result);
     void apply_integration_time_param(const rclcpp::Parameter& parameter, rcl_interfaces::msg::SetParametersResult& result); 
     void apply_hdr_mode_param(const rclcpp::Parameter& parameter, rcl_interfaces::msg::SetParametersResult& result); 
+    void apply_streaming_param(const rclcpp::Parameter& parameter, rcl_interfaces::msg::SetParametersResult& result); 
 
 };
 
