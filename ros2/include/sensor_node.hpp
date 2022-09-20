@@ -29,9 +29,6 @@ class T10Sensor : public rclcpp::Node
 
     t10utils::Sensor interface_;
     t10utils::CartesianTransform cartesianTransform_;
-    int lensCenterOffsetX_ = 0;
-    int lensCenterOffsetY_ = 0;
-    int lensType_ = 0;  //0- wide field, 1- standard field, 2 - narrow field
 
   public:
     /// Standard constructor
@@ -62,7 +59,8 @@ class T10Sensor : public rclcpp::Node
     void apply_stream_type_param(const rclcpp::Parameter& parameter, rcl_interfaces::msg::SetParametersResult& result);
     void apply_integration_time_param(const rclcpp::Parameter& parameter, rcl_interfaces::msg::SetParametersResult& result); 
     void apply_hdr_mode_param(const rclcpp::Parameter& parameter, rcl_interfaces::msg::SetParametersResult& result); 
-    void apply_streaming_param(const rclcpp::Parameter& parameter, rcl_interfaces::msg::SetParametersResult& result); 
+    void apply_streaming_param(const rclcpp::Parameter& parameter, rcl_interfaces::msg::SetParametersResult& result);
+    void apply_lens_type(const rclcpp::Parameter& parameter, rcl_interfaces::msg::SetParametersResult& result);
 
 };
 

@@ -19,9 +19,9 @@ using namespace std::string_literals;
 
 constexpr double SENSOR_PIXEL_SIZE_MM = 0.02; // camera sensor pixel size 20x20 um
 constexpr int WIDTH = 320;
-constexpr int WIDTH2 = 160;
 constexpr int HEIGHT = 240;
-constexpr int HEIGHT2 = 120;
+constexpr int LENS_CENTER_OFFSET_X = 0;
+constexpr int LENS_CENTER_OFFSET_Y = 0;
 constexpr int32_t MIN_INTEGRATION_TIME = 0;
 constexpr int32_t MAX_INTEGRATION_TIME = 4000;
 
@@ -31,6 +31,7 @@ constexpr auto PARAM_INTEGRATION_TIME1 = "integration_time1";
 constexpr auto PARAM_INTEGRATION_TIME2 = "integration_time2";
 constexpr auto PARAM_HDR_MODE = "hdr_mode";
 constexpr auto PARAM_STREAMING = "streaming";
+constexpr auto PARAM_LENS_TYPE = "lens_type";
 
 /// Quick helper function that return true if the string haystack starts with the string needle 
 bool begins_with(const std::string& needle, const std::string& haystack ) 
@@ -63,7 +64,6 @@ T10Sensor::T10Sensor()
   (void)interface_.subscribeFrame([&](std::shared_ptr<t10utils::Frame> f) -> void
                                   { updateFrame(*f); });
 
-  cartesianTransform_.initLensTransform(SENSOR_PIXEL_SIZE_MM, WIDTH, HEIGHT, lensCenterOffsetX_, lensCenterOffsetY_, lensType_);
 
   // Setup ROS parameters
   this->declare_parameter(PARAM_STREAM_TYPE, "distance_amplitude");
@@ -72,6 +72,7 @@ T10Sensor::T10Sensor()
   this->declare_parameter(PARAM_INTEGRATION_TIME2, 0);
   this->declare_parameter(PARAM_HDR_MODE, "off");
   this->declare_parameter(PARAM_STREAMING, true);
+  this->declare_parameter(PARAM_LENS_TYPE, "wf");
 
   // Setup a callback so that we can react to parameter changes from the outside world.
   parameters_callback_handle_ = this->add_on_set_parameters_callback(
@@ -114,6 +115,10 @@ rcl_interfaces::msg::SetParametersResult T10Sensor::on_set_parameters_callback(
     else if( parameter.get_name() == PARAM_STREAMING)
     {
       this->apply_streaming_param(parameter, result);
+    }
+    else if( parameter.get_name() == PARAM_LENS_TYPE)
+    {
+      this->apply_lens_type(parameter, result);
     }
   }
   return result;
@@ -213,6 +218,33 @@ void T10Sensor::apply_streaming_param(const rclcpp::Parameter& parameter, rcl_in
   }
 }
 
+
+void T10Sensor::apply_lens_type(const rclcpp::Parameter& parameter, rcl_interfaces::msg::SetParametersResult& result)
+{
+  auto value = parameter.as_string();
+  RCLCPP_INFO(this->get_logger(), "Handling parameter \"%s\" : %s", parameter.get_name().c_str(), value.c_str());
+
+  //0 - wide field, 1 - standard field, 2 - narrow field
+  if(begins_with("w", value)) //wide FOV 
+  {
+    cartesianTransform_.initLensTransform(SENSOR_PIXEL_SIZE_MM, WIDTH, HEIGHT, LENS_CENTER_OFFSET_X, LENS_CENTER_OFFSET_Y, 0);
+  }
+  else if(begins_with("s", value)) //standard fov
+  {
+    cartesianTransform_.initLensTransform(SENSOR_PIXEL_SIZE_MM, WIDTH, HEIGHT, LENS_CENTER_OFFSET_X, LENS_CENTER_OFFSET_Y, 1);
+    interface_.setHDRMode(2);
+  }
+  else if(begins_with("n", value)) //narrow fov
+  {
+    cartesianTransform_.initLensTransform(SENSOR_PIXEL_SIZE_MM, WIDTH, HEIGHT, LENS_CENTER_OFFSET_X, LENS_CENTER_OFFSET_Y, 2);
+  }
+  else
+  {
+    result.successful = false;
+    result.reason = parameter.get_name() + " value is out of range";
+  }
+
+}
 
 
 void T10Sensor::publish_amplData(const t10utils::Frame &frame, rclcpp::Publisher<sensor_msgs::msg::Image> &pub, const rclcpp::Time& stamp)
