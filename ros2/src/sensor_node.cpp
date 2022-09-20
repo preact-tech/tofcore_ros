@@ -424,35 +424,7 @@ void T10Sensor::publish_DCSData(const t10utils::Frame &frame, const rclcpp::Time
         std::copy(begin, end, img.data.begin());
         pub_dcs_[i]->publish(img);
     }
-
-//     //HACK: publish a fake ambient frame to test using this with the truesense::processor node.
-//     truesense_msgs::msg::Frame img;
-//     img.header.stamp = stamp;
-//     img.header.frame_id = "unknown";
-//     img.height = static_cast<uint32_t>(frame.height);
-//     img.width = static_cast<uint32_t>(frame.width);
-//     img.encoding = "";
-//     img.step = frame.width*2;
-//     img.index = frame.frame_id;
-//     img.type = truesense_msgs::msg::Frame::TYPE_AMBIENT;
-//     img.temperature = std::numeric_limits<float>::quiet_NaN(); //TODO Need to get the real temperature in degrees C
-//     img.modulation_frequency = 12; //TODO need to get mod freq in MHz
-//     img.integration_time = 200;  //TODO need to get the integration time in microseconds
-// // # Binning refers here to any camera setting which combines rectangular
-// // #  neighborhoods of pixels into larger "super-pixels." It reduces the
-// // #  resolution of the output image to
-// // #  (width / binning_h) x (height / binning_v).
-// // # The default values binning_h = binning_v = 0 is considered the same
-// // #  as binning_h = binning_v = 1 (no subsampling).
-//     img.binning_h = 0;
-//     img.binning_v = 0;
-//     img.config_index = 0; //This is the config index from Truesense sensors, really Not useful in this case.
-//     img.vled_mv = 0; //TODO Need to get the real value.
-//     img.chip_id = "deedbeef"; //TODO need to calcualte the chipid from the sensor info (wafer id, etc)
-
-//     img.data.resize(img.step * img.height, 0);
-//     pub.publish(img);
-   }
+  }
 }
 
 
