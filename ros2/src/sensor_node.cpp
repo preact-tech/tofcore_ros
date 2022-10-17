@@ -7,6 +7,7 @@
 #include <functional>
 #include <memory>
 #include <string>
+#include <vector>
 
 #include <rclcpp/rclcpp.hpp>
 #include <sensor_msgs/msg/point_cloud2.hpp>
@@ -32,6 +33,8 @@ constexpr auto PARAM_INTEGRATION_TIME2 = "integration_time2";
 constexpr auto PARAM_HDR_MODE = "hdr_mode";
 constexpr auto PARAM_STREAMING = "streaming";
 constexpr auto PARAM_LENS_TYPE = "lens_type";
+constexpr auto PARAM_MODULATION_FREQ = "modulation_frequency";
+constexpr auto PARAM_DISTANCE_OFFSET = "distance_offset";
 
 /// Quick helper function that return true if the string haystack starts with the string needle 
 bool begins_with(const std::string& needle, const std::string& haystack ) 
@@ -73,6 +76,8 @@ T10Sensor::T10Sensor()
   this->declare_parameter(PARAM_HDR_MODE, "off");
   this->declare_parameter(PARAM_STREAMING, true);
   this->declare_parameter(PARAM_LENS_TYPE, "wf");
+  this->declare_parameter(PARAM_MODULATION_FREQ, 0);
+  this->declare_parameter(PARAM_DISTANCE_OFFSET, 0);
 
   // Setup a callback so that we can react to parameter changes from the outside world.
   parameters_callback_handle_ = this->add_on_set_parameters_callback(
@@ -86,8 +91,6 @@ T10Sensor::T10Sensor()
 rcl_interfaces::msg::SetParametersResult T10Sensor::on_set_parameters_callback(
     const std::vector<rclcpp::Parameter> &parameters)
 {
-  interface_.setModulation(0, 0);
-
   // assume success, if any parameter set below fails this will be changed
   rcl_interfaces::msg::SetParametersResult result;
   result.successful = true;
@@ -95,7 +98,8 @@ rcl_interfaces::msg::SetParametersResult T10Sensor::on_set_parameters_callback(
 
   for (const auto &parameter : parameters)
   {
-    if (parameter.get_name() == PARAM_STREAM_TYPE)
+    auto param_name = parameter.get_name();
+    if (param_name == PARAM_STREAM_TYPE)
     {
       bool streaming = true;
       this->get_parameter(PARAM_STREAMING, streaming);
@@ -104,21 +108,30 @@ rcl_interfaces::msg::SetParametersResult T10Sensor::on_set_parameters_callback(
         this->apply_stream_type_param(parameter, result);
       }
     }
-    else if (begins_with("integration_time", parameter.get_name()))
+    else if (begins_with("integration_time", param_name))
     {
       this->apply_integration_time_param(parameter, result);
     }
-    else if( parameter.get_name() == PARAM_HDR_MODE)
+    else if( param_name == PARAM_HDR_MODE)
     {
       this->apply_hdr_mode_param(parameter, result);
     }
-    else if( parameter.get_name() == PARAM_STREAMING)
+    else if( param_name == PARAM_STREAMING)
     {
       this->apply_streaming_param(parameter, result);
     }
-    else if( parameter.get_name() == PARAM_LENS_TYPE)
+    else if( param_name == PARAM_LENS_TYPE)
     {
-      this->apply_lens_type(parameter, result);
+      this->apply_lens_type_param(parameter, result);
+    }
+    else if( param_name == PARAM_MODULATION_FREQ)
+    {
+      this->apply_modulation_frequency_param(parameter, result);
+    }
+    else if( param_name == PARAM_DISTANCE_OFFSET)
+    {
+      this->apply_distance_offset_param(parameter, result);
+
     }
   }
   return result;
@@ -198,6 +211,22 @@ void T10Sensor::apply_hdr_mode_param(const rclcpp::Parameter& parameter, rcl_int
 }
 
 
+
+void T10Sensor::apply_modulation_frequency_param(const rclcpp::Parameter& parameter, rcl_interfaces::msg::SetParametersResult& result) 
+{
+  auto value = parameter.as_int();
+  RCLCPP_INFO(this->get_logger(), "Handling parameter \"%s\" : %li", parameter.get_name().c_str(), value);
+  if( value >= 0 && value <=5) 
+  {
+    interface_.setModulation(value, 0);
+  }
+  else
+  {
+    result.successful = false;
+    result.reason = parameter.get_name() + " value is out of range";
+  }
+}
+
 void T10Sensor::apply_streaming_param(const rclcpp::Parameter& parameter, rcl_interfaces::msg::SetParametersResult& result) 
 {
   try {
@@ -219,7 +248,7 @@ void T10Sensor::apply_streaming_param(const rclcpp::Parameter& parameter, rcl_in
 }
 
 
-void T10Sensor::apply_lens_type(const rclcpp::Parameter& parameter, rcl_interfaces::msg::SetParametersResult& result)
+void T10Sensor::apply_lens_type_param(const rclcpp::Parameter& parameter, rcl_interfaces::msg::SetParametersResult& result)
 {
   auto value = parameter.as_string();
   RCLCPP_INFO(this->get_logger(), "Handling parameter \"%s\" : %s", parameter.get_name().c_str(), value.c_str());
@@ -232,11 +261,16 @@ void T10Sensor::apply_lens_type(const rclcpp::Parameter& parameter, rcl_interfac
   else if(begins_with("s", value)) //standard fov
   {
     cartesianTransform_.initLensTransform(SENSOR_PIXEL_SIZE_MM, WIDTH, HEIGHT, LENS_CENTER_OFFSET_X, LENS_CENTER_OFFSET_Y, 1);
-    interface_.setHDRMode(2);
   }
   else if(begins_with("n", value)) //narrow fov
   {
     cartesianTransform_.initLensTransform(SENSOR_PIXEL_SIZE_MM, WIDTH, HEIGHT, LENS_CENTER_OFFSET_X, LENS_CENTER_OFFSET_Y, 2);
+  }
+  else if(begins_with("r", value))
+  {
+    std::vector<double> rays_x, rays_y, rays_z;
+    interface_.getLensInfo(rays_x, rays_y, rays_z);
+    cartesianTransform_.initLensTransform(WIDTH, HEIGHT, rays_x, rays_y, rays_z);
   }
   else
   {
@@ -245,6 +279,16 @@ void T10Sensor::apply_lens_type(const rclcpp::Parameter& parameter, rcl_interfac
   }
 
 }
+
+
+void T10Sensor::apply_distance_offset_param(const rclcpp::Parameter& parameter, rcl_interfaces::msg::SetParametersResult&)
+{
+  auto value = parameter.as_int();
+  RCLCPP_INFO(this->get_logger(), "Handling parameter \"%s\" : %ld", parameter.get_name().c_str(), value);
+
+  interface_.setOffset(value);
+}
+
 
 
 void T10Sensor::publish_amplData(const t10utils::Frame &frame, rclcpp::Publisher<sensor_msgs::msg::Image> &pub, const rclcpp::Time& stamp)
@@ -270,7 +314,7 @@ void T10Sensor::publish_distData(const t10utils::Frame &frame, rclcpp::Publisher
   img.width = static_cast<uint32_t>(frame.width);
   img.encoding = sensor_msgs::image_encodings::MONO16;
   img.step = img.width * frame.px_size;
-  img.is_bigendian = 0;
+  img.is_bigendian = 1;
   img.data = frame.distData;
   pub.publish(img);
 }
@@ -309,6 +353,9 @@ void T10Sensor::publish_pointCloud(const t10utils::Frame &frame, rclcpp::Publish
   sensor_msgs::PointCloud2Iterator<uint8_t> it_valid{cloud_msg, "valid"};
   sensor_msgs::PointCloud2Iterator<uint16_t> it_phase{cloud_msg, "distance"};
 
+  int bad_pixel_count = 0;
+  int bad_range_count = 0;
+
   auto it_d = frame.distData.begin();
   auto it_a = frame.amplData.begin();
   uint32_t count = 0;
@@ -320,13 +367,21 @@ void T10Sensor::publish_pointCloud(const t10utils::Frame &frame, rclcpp::Publish
     int valid = 0;
     double px, py, pz;
     px = py = pz = 0.1; // std::numeric_limits<float>::quiet_NaN();
-    if (distance > 0 && distance < 65000)
+    if (distance > 0 && distance < 64000)
     {
+      if( distance > 10000) {
+        RCLCPP_WARN(this->get_logger(), "Pixel x:%i y:%i distance: %i\n", x, y, distance);
+        ++bad_range_count;
+      }
+
       cartesianTransform_.transformPixel(x, y, distance, px, py, pz);
       px /= 1000.0; // mm -> m
       py /= 1000.0; // mm -> m
       pz /= 1000.0; // mm -> m
       valid = 1;
+    } else {
+      ++bad_pixel_count;
+      //RCLCPP_WARN(this->get_logger(), "Skipping Point x:%i y:%i with distance: %i\n", x, y, distance);
     }
 
     *it_x = px;
@@ -355,6 +410,10 @@ void T10Sensor::publish_pointCloud(const t10utils::Frame &frame, rclcpp::Publish
     ++count;
     it_d += 2;
   }
+
+  RCLCPP_WARN(this->get_logger(), "Stats bad_pixel_count: %i bad_range_count: %i\n", bad_pixel_count, bad_range_count);
+
+
   pub.publish(cloud_msg);
 
   // int x, y, k, l;
