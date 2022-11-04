@@ -7,6 +7,7 @@
 #include <functional>
 #include <memory>
 #include <string>
+#include <vector>
 
 #include <rclcpp/rclcpp.hpp>
 #include <sensor_msgs/msg/point_cloud2.hpp>
@@ -32,6 +33,8 @@ constexpr auto PARAM_INTEGRATION_TIME2 = "integration_time2";
 constexpr auto PARAM_HDR_MODE = "hdr_mode";
 constexpr auto PARAM_STREAMING = "streaming";
 constexpr auto PARAM_LENS_TYPE = "lens_type";
+constexpr auto PARAM_MODULATION_FREQ = "modulation_frequency";
+constexpr auto PARAM_DISTANCE_OFFSET = "distance_offset";
 
 /// Quick helper function that return true if the string haystack starts with the string needle 
 bool begins_with(const std::string& needle, const std::string& haystack ) 
@@ -73,6 +76,8 @@ T10Sensor::T10Sensor()
   this->declare_parameter(PARAM_HDR_MODE, "off");
   this->declare_parameter(PARAM_STREAMING, true);
   this->declare_parameter(PARAM_LENS_TYPE, "wf");
+  this->declare_parameter(PARAM_MODULATION_FREQ, "12");
+  this->declare_parameter(PARAM_DISTANCE_OFFSET, 0);
 
   // Setup a callback so that we can react to parameter changes from the outside world.
   parameters_callback_handle_ = this->add_on_set_parameters_callback(
@@ -86,8 +91,6 @@ T10Sensor::T10Sensor()
 rcl_interfaces::msg::SetParametersResult T10Sensor::on_set_parameters_callback(
     const std::vector<rclcpp::Parameter> &parameters)
 {
-  interface_.setModulation(0, 0);
-
   // assume success, if any parameter set below fails this will be changed
   rcl_interfaces::msg::SetParametersResult result;
   result.successful = true;
@@ -95,7 +98,8 @@ rcl_interfaces::msg::SetParametersResult T10Sensor::on_set_parameters_callback(
 
   for (const auto &parameter : parameters)
   {
-    if (parameter.get_name() == PARAM_STREAM_TYPE)
+    auto param_name = parameter.get_name();
+    if (param_name == PARAM_STREAM_TYPE)
     {
       bool streaming = true;
       this->get_parameter(PARAM_STREAMING, streaming);
@@ -104,21 +108,30 @@ rcl_interfaces::msg::SetParametersResult T10Sensor::on_set_parameters_callback(
         this->apply_stream_type_param(parameter, result);
       }
     }
-    else if (begins_with("integration_time", parameter.get_name()))
+    else if (begins_with("integration_time", param_name))
     {
       this->apply_integration_time_param(parameter, result);
     }
-    else if( parameter.get_name() == PARAM_HDR_MODE)
+    else if( param_name == PARAM_HDR_MODE)
     {
       this->apply_hdr_mode_param(parameter, result);
     }
-    else if( parameter.get_name() == PARAM_STREAMING)
+    else if( param_name == PARAM_STREAMING)
     {
       this->apply_streaming_param(parameter, result);
     }
-    else if( parameter.get_name() == PARAM_LENS_TYPE)
+    else if( param_name == PARAM_LENS_TYPE)
     {
-      this->apply_lens_type(parameter, result);
+      this->apply_lens_type_param(parameter, result);
+    }
+    else if( param_name == PARAM_MODULATION_FREQ)
+    {
+      this->apply_modulation_frequency_param(parameter, result);
+    }
+    else if( param_name == PARAM_DISTANCE_OFFSET)
+    {
+      this->apply_distance_offset_param(parameter, result);
+
     }
   }
   return result;
@@ -198,6 +211,46 @@ void T10Sensor::apply_hdr_mode_param(const rclcpp::Parameter& parameter, rcl_int
 }
 
 
+
+void T10Sensor::apply_modulation_frequency_param(const rclcpp::Parameter& parameter, rcl_interfaces::msg::SetParametersResult& result) 
+{
+  auto value = parameter.as_string();
+  RCLCPP_INFO(this->get_logger(), "Handling parameter \"%s\" : %s", parameter.get_name().c_str(), value.c_str());
+
+  int mod_freq_index = 0;
+  if(begins_with("12", value))
+  {
+    mod_freq_index = 0;
+  }
+  else if(begins_with("24", value))
+  {
+    mod_freq_index = 1;
+  }
+  else if(begins_with("6", value))
+  {
+    mod_freq_index = 2;
+  }
+  else if(begins_with("3", value))
+  {
+    mod_freq_index = 3;
+  }
+  else if(begins_with("1.5", value))
+  {
+    mod_freq_index = 4;
+  }
+  else if(begins_with("0.75", value))
+  {
+    mod_freq_index = 5;
+  }
+  else 
+  {
+    result.successful = false;
+    result.reason = parameter.get_name() + " value is out of range";
+    return;
+  }
+  interface_.setModulation(mod_freq_index, 0);
+}
+
 void T10Sensor::apply_streaming_param(const rclcpp::Parameter& parameter, rcl_interfaces::msg::SetParametersResult& result) 
 {
   try {
@@ -219,7 +272,7 @@ void T10Sensor::apply_streaming_param(const rclcpp::Parameter& parameter, rcl_in
 }
 
 
-void T10Sensor::apply_lens_type(const rclcpp::Parameter& parameter, rcl_interfaces::msg::SetParametersResult& result)
+void T10Sensor::apply_lens_type_param(const rclcpp::Parameter& parameter, rcl_interfaces::msg::SetParametersResult& result)
 {
   auto value = parameter.as_string();
   RCLCPP_INFO(this->get_logger(), "Handling parameter \"%s\" : %s", parameter.get_name().c_str(), value.c_str());
@@ -232,11 +285,16 @@ void T10Sensor::apply_lens_type(const rclcpp::Parameter& parameter, rcl_interfac
   else if(begins_with("s", value)) //standard fov
   {
     cartesianTransform_.initLensTransform(SENSOR_PIXEL_SIZE_MM, WIDTH, HEIGHT, LENS_CENTER_OFFSET_X, LENS_CENTER_OFFSET_Y, 1);
-    interface_.setHDRMode(2);
   }
   else if(begins_with("n", value)) //narrow fov
   {
     cartesianTransform_.initLensTransform(SENSOR_PIXEL_SIZE_MM, WIDTH, HEIGHT, LENS_CENTER_OFFSET_X, LENS_CENTER_OFFSET_Y, 2);
+  }
+  else if(begins_with("r", value))
+  {
+    std::vector<double> rays_x, rays_y, rays_z;
+    interface_.getLensInfo(rays_x, rays_y, rays_z);
+    cartesianTransform_.initLensTransform(WIDTH, HEIGHT, rays_x, rays_y, rays_z);
   }
   else
   {
@@ -245,6 +303,16 @@ void T10Sensor::apply_lens_type(const rclcpp::Parameter& parameter, rcl_interfac
   }
 
 }
+
+
+void T10Sensor::apply_distance_offset_param(const rclcpp::Parameter& parameter, rcl_interfaces::msg::SetParametersResult&)
+{
+  auto value = parameter.as_int();
+  RCLCPP_INFO(this->get_logger(), "Handling parameter \"%s\" : %ld", parameter.get_name().c_str(), value);
+
+  interface_.setOffset(value);
+}
+
 
 
 void T10Sensor::publish_amplData(const t10utils::Frame &frame, rclcpp::Publisher<sensor_msgs::msg::Image> &pub, const rclcpp::Time& stamp)
@@ -270,7 +338,7 @@ void T10Sensor::publish_distData(const t10utils::Frame &frame, rclcpp::Publisher
   img.width = static_cast<uint32_t>(frame.width);
   img.encoding = sensor_msgs::image_encodings::MONO16;
   img.step = img.width * frame.px_size;
-  img.is_bigendian = 0;
+  img.is_bigendian = 1;
   img.data = frame.distData;
   pub.publish(img);
 }
@@ -319,8 +387,8 @@ void T10Sensor::publish_pointCloud(const t10utils::Frame &frame, rclcpp::Publish
     auto x = count % frame.width;
     int valid = 0;
     double px, py, pz;
-    px = py = pz = 0.1; // std::numeric_limits<float>::quiet_NaN();
-    if (distance > 0 && distance < 65000)
+    px = py = pz = 0.1;
+    if (distance > 0 && distance < 64000)
     {
       cartesianTransform_.transformPixel(x, y, distance, px, py, pz);
       px /= 1000.0; // mm -> m
@@ -355,42 +423,8 @@ void T10Sensor::publish_pointCloud(const t10utils::Frame &frame, rclcpp::Publish
     ++count;
     it_d += 2;
   }
+
   pub.publish(cloud_msg);
-
-  // int x, y, k, l;
-  // for(k=0, l=0, y=0; y< frame->height; y++){
-  //     for(x=0; x< frame->width; x++, k++, l+=2){
-  //         pcl::PointXYZI &p = cloud->points[k];
-  //         distance = (frame->distData[l+1] << 8) + frame->distData[l];
-
-  //         if(frame->dataType == Frame::AMPLITUDE)
-  //             amplitude = (frame->amplData[l+1] << 8)  + frame->amplData[l];
-
-  //         if (distance > 0 && distance < 65000){
-
-  //             if(cartesian){
-  //                 cartesianTransform.transformPixel(x, y, distance, px, py, pz);
-  //                 p.x = static_cast<float>(px / 1000.0); //mm -> m
-  //                 p.y = static_cast<float>(py / 1000.0);
-  //                 p.z = static_cast<float>(pz / 1000.0);
-
-  //                 if(frame->dataType == Frame::AMPLITUDE) p.intensity = static_cast<float>(amplitude);
-  //                 else p.intensity = static_cast<float>(pz / 1000.0);
-
-  //             }else{
-  //                 p.x = x / 100.0;
-  //                 p.y = y / 100.0;
-  //                 p.z = distance / 1000.0;
-  //                 if(frame->dataType == Frame::AMPLITUDE) p.intensity =  static_cast<float>(amplitude);
-  //                 else p.intensity = static_cast<float>(distance / 1000.0);
-  //             }
-  //         }else{
-  //             p.x = std::numeric_limits<float>::quiet_NaN();
-  //             p.y = std::numeric_limits<float>::quiet_NaN();
-  //             p.z = std::numeric_limits<float>::quiet_NaN();
-  //         }
-  //     }
-  // }
 }
 
 
