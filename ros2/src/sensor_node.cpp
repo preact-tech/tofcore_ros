@@ -19,7 +19,7 @@ using namespace std::chrono_literals;
 using namespace std::string_literals;
 
 constexpr double SENSOR_PIXEL_SIZE_MM = 0.02; // camera sensor pixel size 20x20 um
-constexpr int WIDTH = 320;
+constexpr int m_width = 320;
 constexpr int HEIGHT = 240;
 constexpr int LENS_CENTER_OFFSET_X = 0;
 constexpr int LENS_CENTER_OFFSET_Y = 0;
@@ -62,9 +62,10 @@ T10Sensor::T10Sensor()
   }
 
   // connect to interface
-  (void)interface_.subscribeCameraInfo([&](std::shared_ptr<t10utils::CameraInfo> ci) -> void
+  interface_.reset( new t10utils::Sensor(1, "/dev/ttyACM1"));
+  (void)interface_->subscribeCameraInfo([&](std::shared_ptr<t10utils::CameraInfo> ci) -> void
                                        { (void)ci; /*updateCameraInfo(ci);*/ });
-  (void)interface_.subscribeFrame([&](std::shared_ptr<t10utils::Frame> f) -> void
+  (void)interface_->subscribeFrame([&](std::shared_ptr<t10utils::Frame> f) -> void
                                   { updateFrame(*f); });
 
 
@@ -144,19 +145,23 @@ void T10Sensor::apply_stream_type_param(const rclcpp::Parameter& parameter, rcl_
   RCLCPP_INFO(this->get_logger(), "Handling parameter \"%s\" : \"%s\"", parameter.get_name().c_str(), value.c_str());
   if (value == "distance")
   {
-    interface_.streamDistance();
+    interface_->streamDistance();
   }
   else if (value == "grayscale")
   {
-    interface_.streamGrayscale();
+    interface_->streamGrayscale();
   }
   else if (value == "distance_amplitude")
   {
-    interface_.streamDistanceAmplitude();
+    interface_->streamDistanceAmplitude();
   }
   else if (value == "dcs")
   {
-    interface_.streamDCS();
+    interface_->streamDCS();
+  }
+  else if (value == "dcs_ambient")
+  {
+    interface_->streamDCSAmbient();
   }
   else
   {
@@ -182,7 +187,7 @@ void T10Sensor::apply_integration_time_param(const rclcpp::Parameter& parameter,
     int_times[0] = (parameter.get_name() == PARAM_INTEGRATION_TIME0) ? value : get_parameter(PARAM_INTEGRATION_TIME0).as_int();
     int_times[1] = (parameter.get_name() == PARAM_INTEGRATION_TIME1) ? value : get_parameter(PARAM_INTEGRATION_TIME1).as_int();
     int_times[2] = (parameter.get_name() == PARAM_INTEGRATION_TIME2) ? value : get_parameter(PARAM_INTEGRATION_TIME1).as_int();
-    interface_.setIntegrationTime(int_times[0], int_times[1], int_times[2], 500/*hard code greyscale int time for now*/);
+    interface_->setIntegrationTime(int_times[0], int_times[1], int_times[2], 500/*hard code greyscale int time for now*/);
   }
 }
 
@@ -193,15 +198,15 @@ void T10Sensor::apply_hdr_mode_param(const rclcpp::Parameter& parameter, rcl_int
   RCLCPP_INFO(this->get_logger(), "Handling parameter \"%s\" : %s", parameter.get_name().c_str(), value.c_str());
   if(begins_with("s", value)) //spacital 
   {
-    interface_.setHDRMode(1);
+    interface_->setHDRMode(1);
   }
   else if(begins_with("t", value)) //temporal
   {
-    interface_.setHDRMode(2);
+    interface_->setHDRMode(2);
   }
   else if(begins_with("o", value)) //off
   {
-    interface_.setHDRMode(0);
+    interface_->setHDRMode(0);
   }
   else
   {
@@ -248,7 +253,7 @@ void T10Sensor::apply_modulation_frequency_param(const rclcpp::Parameter& parame
     result.reason = parameter.get_name() + " value is out of range";
     return;
   }
-  interface_.setModulation(mod_freq_index, 0);
+  interface_->setModulation(mod_freq_index, 0);
 }
 
 void T10Sensor::apply_streaming_param(const rclcpp::Parameter& parameter, rcl_interfaces::msg::SetParametersResult& result) 
@@ -262,7 +267,7 @@ void T10Sensor::apply_streaming_param(const rclcpp::Parameter& parameter, rcl_in
       (void)this->get_parameter(PARAM_STREAM_TYPE, stream_type);
       this->apply_stream_type_param(stream_type, dummy_result);
     } else {
-      interface_.stopStream();
+      interface_->stopStream();
     }
   }
   catch(std::exception& e) {
@@ -280,21 +285,21 @@ void T10Sensor::apply_lens_type_param(const rclcpp::Parameter& parameter, rcl_in
   //0 - wide field, 1 - standard field, 2 - narrow field
   if(begins_with("w", value)) //wide FOV 
   {
-    cartesianTransform_.initLensTransform(SENSOR_PIXEL_SIZE_MM, WIDTH, HEIGHT, LENS_CENTER_OFFSET_X, LENS_CENTER_OFFSET_Y, 0);
+    cartesianTransform_.initLensTransform(SENSOR_PIXEL_SIZE_MM, m_width, HEIGHT, LENS_CENTER_OFFSET_X, LENS_CENTER_OFFSET_Y, 0);
   }
   else if(begins_with("s", value)) //standard fov
   {
-    cartesianTransform_.initLensTransform(SENSOR_PIXEL_SIZE_MM, WIDTH, HEIGHT, LENS_CENTER_OFFSET_X, LENS_CENTER_OFFSET_Y, 1);
+    cartesianTransform_.initLensTransform(SENSOR_PIXEL_SIZE_MM, m_width, HEIGHT, LENS_CENTER_OFFSET_X, LENS_CENTER_OFFSET_Y, 1);
   }
   else if(begins_with("n", value)) //narrow fov
   {
-    cartesianTransform_.initLensTransform(SENSOR_PIXEL_SIZE_MM, WIDTH, HEIGHT, LENS_CENTER_OFFSET_X, LENS_CENTER_OFFSET_Y, 2);
+    cartesianTransform_.initLensTransform(SENSOR_PIXEL_SIZE_MM, m_width, HEIGHT, LENS_CENTER_OFFSET_X, LENS_CENTER_OFFSET_Y, 2);
   }
   else if(begins_with("r", value))
   {
     std::vector<double> rays_x, rays_y, rays_z;
-    interface_.getLensInfo(rays_x, rays_y, rays_z);
-    cartesianTransform_.initLensTransform(WIDTH, HEIGHT, rays_x, rays_y, rays_z);
+    interface_->getLensInfo(rays_x, rays_y, rays_z);
+    cartesianTransform_.initLensTransform(m_width, HEIGHT, rays_x, rays_y, rays_z);
   }
   else
   {
@@ -310,7 +315,7 @@ void T10Sensor::apply_distance_offset_param(const rclcpp::Parameter& parameter, 
   auto value = parameter.as_int();
   RCLCPP_INFO(this->get_logger(), "Handling parameter \"%s\" : %ld", parameter.get_name().c_str(), value);
 
-  interface_.setOffset(value);
+  interface_->setOffset(value);
 }
 
 
@@ -320,12 +325,12 @@ void T10Sensor::publish_amplData(const t10utils::Frame &frame, rclcpp::Publisher
   sensor_msgs::msg::Image img;
   img.header.stamp = stamp;
   img.header.frame_id = "unknown";
-  img.height = static_cast<uint32_t>(frame.height);
-  img.width = static_cast<uint32_t>(frame.width);
+  img.height = static_cast<uint32_t>(frame.m_height);
+  img.width = static_cast<uint32_t>(frame.m_width);
   img.encoding = sensor_msgs::image_encodings::MONO16;
-  img.step = img.width * frame.px_size;
+  img.step = img.width * frame.m_px_size;
   img.is_bigendian = 0;
-  img.data = frame.amplData;
+  img.data = frame.m_amplData;
   pub.publish(img);
 }
 
@@ -334,12 +339,12 @@ void T10Sensor::publish_distData(const t10utils::Frame &frame, rclcpp::Publisher
   sensor_msgs::msg::Image img;
   img.header.stamp = stamp;
   img.header.frame_id = "unknown";
-  img.height = static_cast<uint32_t>(frame.height);
-  img.width = static_cast<uint32_t>(frame.width);
+  img.height = static_cast<uint32_t>(frame.m_height);
+  img.width = static_cast<uint32_t>(frame.m_width);
   img.encoding = sensor_msgs::image_encodings::MONO16;
-  img.step = img.width * frame.px_size;
+  img.step = img.width * frame.m_px_size;
   img.is_bigendian = 1;
-  img.data = frame.distData;
+  img.data = frame.m_distData;
   pub.publish(img);
 }
 
@@ -352,7 +357,7 @@ void T10Sensor::publish_pointCloud(const t10utils::Frame &frame, rclcpp::Publish
   cloud_msg.is_bigendian = false;
 
   sensor_msgs::PointCloud2Modifier modifier(cloud_msg);
-  modifier.resize(frame.height * frame.width);
+  modifier.resize(frame.m_height * frame.m_width);
   modifier.setPointCloud2Fields(
       7,
       "x", 1, sensor_msgs::msg::PointField::FLOAT32,
@@ -364,10 +369,10 @@ void T10Sensor::publish_pointCloud(const t10utils::Frame &frame, rclcpp::Publish
       "distance", 1, sensor_msgs::msg::PointField::UINT16);
 
   // Note: For some reason setPointCloudFields doesn't set row_step
-  //      and resets msg height and width so setup them here.
-  cloud_msg.height = static_cast<uint32_t>(frame.height);
-  cloud_msg.width = static_cast<uint32_t>(frame.width);
-  cloud_msg.row_step = frame.width * 19; // 19 is the size in bytes of all the point cloud fields
+  //      and resets msg height and m_width so setup them here.
+  cloud_msg.height = static_cast<uint32_t>(frame.m_height);
+  cloud_msg.width = static_cast<uint32_t>(frame.m_width);
+  cloud_msg.row_step = frame.m_width * 19; // 19 is the size in bytes of all the point cloud fields
 
   sensor_msgs::PointCloud2Iterator<float> it_x{cloud_msg, "x"};
   sensor_msgs::PointCloud2Iterator<float> it_y{cloud_msg, "y"};
@@ -377,14 +382,14 @@ void T10Sensor::publish_pointCloud(const t10utils::Frame &frame, rclcpp::Publish
   sensor_msgs::PointCloud2Iterator<uint8_t> it_valid{cloud_msg, "valid"};
   sensor_msgs::PointCloud2Iterator<uint16_t> it_phase{cloud_msg, "distance"};
 
-  auto it_d = frame.distData.begin();
-  auto it_a = frame.amplData.begin();
+  auto it_d = frame.m_distData.begin();
+  auto it_a = frame.m_amplData.begin();
   uint32_t count = 0;
-  while (it_d != frame.distData.end())
+  while (it_d != frame.m_distData.end())
   {
     auto distance = (*(it_d + 1) << 8) + (*it_d);
-    auto y = count / frame.width;
-    auto x = count % frame.width;
+    auto y = count / frame.m_width;
+    auto x = count % frame.m_width;
     int valid = 0;
     double px, py, pz;
     px = py = pz = 0.1;
@@ -400,7 +405,7 @@ void T10Sensor::publish_pointCloud(const t10utils::Frame &frame, rclcpp::Publish
     *it_x = px;
     *it_y = py;
     *it_z = pz;
-    if (frame.dataType == t10utils::Frame::AMPLITUDE)
+    if (frame.m_dataType == t10utils::Frame::AMPLITUDE)
     {
       *it_amplitude = (*(it_a + 1) << 8) + (*it_a);
       it_a += 2;
@@ -441,19 +446,19 @@ void T10Sensor::publish_DCSData(const t10utils::Frame &frame, const rclcpp::Time
   //
   // Also need to figure out how to publish an ambient frame which will be required for use with the calibration app.
 
-  if(frame.dataType == t10utils::Frame::DCS) {
+  if(frame.m_dataType == t10utils::Frame::DCS) {
     for(auto i = 0; i != 4; ++i) {
         sensor_msgs::msg::Image img;
         img.header.stamp = stamp;
         img.header.frame_id = "unknown";
-        img.height = static_cast<uint32_t>(frame.height);
-        img.width = static_cast<uint32_t>(frame.width);
+        img.height = static_cast<uint32_t>(frame.m_height);
+        img.width = static_cast<uint32_t>(frame.m_width);
         img.encoding = sensor_msgs::image_encodings::MONO16;
-        img.step = img.width * frame.px_size;
+        img.step = img.width * frame.m_px_size;
         img.is_bigendian = 0;
         auto frame_size = img.step * img.height;
         img.data.resize(frame_size);
-        auto begin = frame.dcsData.begin() + (i*frame_size);
+        auto begin = frame.m_dcsData.begin() + (i*frame_size);
         auto end = begin + frame_size;
         std::copy(begin, end, img.data.begin());
         pub_dcs_[i]->publish(img);
@@ -465,7 +470,7 @@ void T10Sensor::publish_DCSData(const t10utils::Frame &frame, const rclcpp::Time
 void T10Sensor::updateFrame(const t10utils::Frame &frame)
 {
   auto stamp = this->now();
-  switch (frame.dataType)
+  switch (frame.m_dataType)
   {
   case t10utils::Frame::GRAYSCALE:
   {

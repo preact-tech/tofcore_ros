@@ -27,7 +27,7 @@ class T10Sensor : public rclcpp::Node
     rclcpp::Publisher<sensor_msgs::msg::PointCloud2>::SharedPtr pub_pcd_;
     std::array<rclcpp::Publisher<sensor_msgs::msg::Image>::SharedPtr, 4> pub_dcs_;
 
-    t10utils::Sensor interface_;
+    std::unique_ptr<t10utils::Sensor> interface_;
     t10utils::CartesianTransform cartesianTransform_;
 
   public:
