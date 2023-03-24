@@ -1,5 +1,5 @@
 repositories:
-  libt10:
+  libtofcore:
     type: git
-    url: git@bitbucket.org:preact-tech/libt10
+    url: git@bitbucket.org:preact-tech/libtofcore
     version: develop

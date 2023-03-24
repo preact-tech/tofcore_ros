@@ -1,7 +1,7 @@
 #include "sensor_node.hpp"
 
-#include <t10utils/t10_sensor.hpp>
-#include <t10utils/cartesian_transform.hpp>
+#include <tofcore/tof_sensor.hpp>
+#include <tofcore/cartesian_transform.hpp>
 
 #include <chrono>
 #include <functional>
@@ -44,7 +44,7 @@ bool begins_with(const std::string& needle, const std::string& haystack )
 
 
 T10Sensor::T10Sensor()
-    : Node("t10_sensor", "t10")
+    : Node("tof_sensor", "tofcore")
 {
   rclcpp::QoS pub_qos(10);
   pub_qos.reliability(rclcpp::ReliabilityPolicy::Reliable);
@@ -62,10 +62,10 @@ T10Sensor::T10Sensor()
   }
 
   // connect to interface
-  interface_.reset( new t10utils::Sensor(1, "/dev/ttyACM1"));
-  (void)interface_->subscribeCameraInfo([&](std::shared_ptr<t10utils::CameraInfo> ci) -> void
+  interface_.reset( new tofcore::Sensor(1, "/dev/ttyACM1"));
+  (void)interface_->subscribeCameraInfo([&](std::shared_ptr<tofcore::CameraInfo> ci) -> void
                                        { (void)ci; /*updateCameraInfo(ci);*/ });
-  (void)interface_->subscribeFrame([&](std::shared_ptr<t10utils::Frame> f) -> void
+  (void)interface_->subscribeFrame([&](std::shared_ptr<tofcore::Frame> f) -> void
                                   { updateFrame(*f); });
 
 
@@ -320,11 +320,11 @@ void T10Sensor::apply_distance_offset_param(const rclcpp::Parameter& parameter, 
 
 
 
-void T10Sensor::publish_amplData(const t10utils::Frame &frame, rclcpp::Publisher<sensor_msgs::msg::Image> &pub, const rclcpp::Time& stamp)
+void T10Sensor::publish_amplData(const tofcore::Frame &frame, rclcpp::Publisher<sensor_msgs::msg::Image> &pub, const rclcpp::Time& stamp)
 {
   sensor_msgs::msg::Image img;
   img.header.stamp = stamp;
-  img.header.frame_id = "unknown";
+  img.header.frame_id = "base_link";
   img.height = static_cast<uint32_t>(frame.m_height);
   img.width = static_cast<uint32_t>(frame.m_width);
   img.encoding = sensor_msgs::image_encodings::MONO16;
@@ -334,11 +334,11 @@ void T10Sensor::publish_amplData(const t10utils::Frame &frame, rclcpp::Publisher
   pub.publish(img);
 }
 
-void T10Sensor::publish_distData(const t10utils::Frame &frame, rclcpp::Publisher<sensor_msgs::msg::Image> &pub, const rclcpp::Time& stamp)
+void T10Sensor::publish_distData(const tofcore::Frame &frame, rclcpp::Publisher<sensor_msgs::msg::Image> &pub, const rclcpp::Time& stamp)
 {
   sensor_msgs::msg::Image img;
   img.header.stamp = stamp;
-  img.header.frame_id = "unknown";
+  img.header.frame_id = "base_link";
   img.height = static_cast<uint32_t>(frame.m_height);
   img.width = static_cast<uint32_t>(frame.m_width);
   img.encoding = sensor_msgs::image_encodings::MONO16;
@@ -348,11 +348,11 @@ void T10Sensor::publish_distData(const t10utils::Frame &frame, rclcpp::Publisher
   pub.publish(img);
 }
 
-void T10Sensor::publish_pointCloud(const t10utils::Frame &frame, rclcpp::Publisher<sensor_msgs::msg::PointCloud2> &pub, const rclcpp::Time& stamp)
+void T10Sensor::publish_pointCloud(const tofcore::Frame &frame, rclcpp::Publisher<sensor_msgs::msg::PointCloud2> &pub, const rclcpp::Time& stamp)
 {
   sensor_msgs::msg::PointCloud2 cloud_msg{};
   cloud_msg.header.stamp = stamp;
-  cloud_msg.header.frame_id = "unknown";
+  cloud_msg.header.frame_id = "base_link";
   cloud_msg.is_dense = true;
   cloud_msg.is_bigendian = false;
 
@@ -405,7 +405,7 @@ void T10Sensor::publish_pointCloud(const t10utils::Frame &frame, rclcpp::Publish
     *it_x = px;
     *it_y = py;
     *it_z = pz;
-    if (frame.m_dataType == t10utils::Frame::AMPLITUDE)
+    if (frame.m_dataType == tofcore::Frame::AMPLITUDE)
     {
       *it_amplitude = (*(it_a + 1) << 8) + (*it_a);
       it_a += 2;
@@ -433,7 +433,7 @@ void T10Sensor::publish_pointCloud(const t10utils::Frame &frame, rclcpp::Publish
 }
 
 
-void T10Sensor::publish_DCSData(const t10utils::Frame &frame, const rclcpp::Time& stamp)
+void T10Sensor::publish_DCSData(const tofcore::Frame &frame, const rclcpp::Time& stamp)
 {
 
   //TODO Need to figure out the best way to publish image meta-data including:
@@ -446,11 +446,11 @@ void T10Sensor::publish_DCSData(const t10utils::Frame &frame, const rclcpp::Time
   //
   // Also need to figure out how to publish an ambient frame which will be required for use with the calibration app.
 
-  if(frame.m_dataType == t10utils::Frame::DCS) {
+  if(frame.m_dataType == tofcore::Frame::DCS) {
     for(auto i = 0; i != 4; ++i) {
         sensor_msgs::msg::Image img;
         img.header.stamp = stamp;
-        img.header.frame_id = "unknown";
+        img.header.frame_id = "base_link";
         img.height = static_cast<uint32_t>(frame.m_height);
         img.width = static_cast<uint32_t>(frame.m_width);
         img.encoding = sensor_msgs::image_encodings::MONO16;
@@ -467,30 +467,30 @@ void T10Sensor::publish_DCSData(const t10utils::Frame &frame, const rclcpp::Time
 }
 
 
-void T10Sensor::updateFrame(const t10utils::Frame &frame)
+void T10Sensor::updateFrame(const tofcore::Frame &frame)
 {
   auto stamp = this->now();
   switch (frame.m_dataType)
   {
-  case t10utils::Frame::GRAYSCALE:
+  case tofcore::Frame::GRAYSCALE:
   {
     publish_amplData(frame, *pub_ambient_, stamp);
     break;
   }
-  case t10utils::Frame::AMPLITUDE:
+  case tofcore::Frame::AMPLITUDE:
   {
     publish_amplData(frame, *pub_amplitude_, stamp);
     publish_distData(frame, *pub_distance_, stamp);
     publish_pointCloud(frame, *pub_pcd_, stamp);
     break;
   }
-  case t10utils::Frame::DISTANCE:
+  case tofcore::Frame::DISTANCE:
   {
     publish_distData(frame, *pub_distance_, stamp);
     publish_pointCloud(frame, *pub_pcd_, stamp);
     break;
   }
-  case t10utils::Frame::DCS:
+  case tofcore::Frame::DCS:
   {
     publish_DCSData(frame, stamp);
     break;

@@ -6,7 +6,7 @@
 
 - A release of ROS2 installed and active. So far all testing has been done with
   with the Galactic release but things should work with any recent ROS2 release.
-- [t10utils](https://bitbucket.org/preact-tech/libt10/src/develop/) either built and installed to CMAKE_INSTALL_PREFIX or cloned to the subdirectory libt10.
+- [libtofcore](https://bitbucket.org/preact-tech/libtofcore/src/develop/) either built and installed to CMAKE_INSTALL_PREFIX or cloned to the subdirectory ./libtofcore .
 
 ### Building
 
@@ -21,7 +21,7 @@ source ./install/setup.bash
 One can quickly view a pointcloud generated from distance data generated on the device using the `pcd-test.launch.py` launch file like so: 
 
 ```
-ros2 launch t10 pcd-test.launch.py
+ros2 launch tofcore pcd-test.launch.py
 ```
 
 You can use `dcs-test.launch.py` to test streaming DCS frames from the device and have the `truesense_processor` node generate distance frames

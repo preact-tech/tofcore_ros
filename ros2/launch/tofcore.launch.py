@@ -6,20 +6,12 @@ from launch.actions import Shutdown, DeclareLaunchArgument
 import os
 
 def generate_launch_description():
-    pkg_share = FindPackageShare(package='t10').find('t10')
-    default_rviz_config_path = os.path.join(pkg_share, 'rviz2/preact_basic_cloud.rviz')
-
-    static_transform = Node(
-        package="tf2_ros",
-        executable="static_transform_publisher",
-        name='transformer',
-        arguments="0 0 0 0 0 0 unknown t21_frame".split()
-    )
+    pkg_share = FindPackageShare(package='tofcore').find('tofcore')
+    default_rviz_config_path = os.path.join(pkg_share, 'rviz2/tofcore_basic_cloud.rviz')
 
     ts_camera = Node(
-        package="t10",
-        executable='t10_sensor',
-        namespace='truesense',
+        package="tofcore",
+        executable='tof_sensor',
         output='screen',
         parameters=[{'stream_type': "distance_amplitude"}],
         on_exit=Shutdown()
@@ -50,7 +42,7 @@ def generate_launch_description():
 
     return launch.LaunchDescription([
         rvizconfig,
-        static_transform,
+#        static_transform,
         ts_camera,
         rviz,
         rqt_node
