@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.8)
-project(t10)
+project(tofcore)
 
 if(CMAKE_COMPILER_IS_GNUCXX OR CMAKE_CXX_COMPILER_ID MATCHES "Clang")
   add_compile_options(-Wall -Wextra -Wpedantic)
@@ -14,26 +14,26 @@ find_package(rclcpp REQUIRED)
 find_package(std_msgs REQUIRED)
 find_package(sensor_msgs REQUIRED)
 
-find_package(T10Utils)
-if(NOT TARGET T10Utils::T10Utils)
-  if (EXISTS "${CMAKE_SOURCE_DIR}/libt10" AND EXISTS "${CMAKE_SOURCE_DIR}/libt10/CMakeLists.txt")
-    add_subdirectory(libt10)
+find_package(ToFCore)
+if(NOT TARGET ToFCore::ToFCore)
+  if (EXISTS "${CMAKE_SOURCE_DIR}/libtofcore" AND EXISTS "${CMAKE_SOURCE_DIR}/libtofcore/CMakeLists.txt")
+    add_subdirectory(libtofcore)
   else()
-    message(FATAL_ERROR "T10Utils library must be installed to ${CMAKE_INSTALL_PREFIX} OR present at ${CMAKE_SOURCE_DIR}/libt10")
+    message(FATAL_ERROR "ToFCore library must be installed to ${CMAKE_INSTALL_PREFIX} OR present at ${CMAKE_SOURCE_DIR}/libtofcore")
   endif()
 endif()
 
 
-add_executable(t10_sensor src/sensor_node.cpp src/main.cpp)
-target_include_directories(t10_sensor PUBLIC
+add_executable(tof_sensor src/sensor_node.cpp src/main.cpp)
+target_include_directories(tof_sensor PUBLIC
   $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
   $<INSTALL_INTERFACE:include>
   )
-target_compile_features(t10_sensor PUBLIC c_std_99 cxx_std_17)  # Require C99 and C++17
-ament_target_dependencies(t10_sensor rclcpp std_msgs sensor_msgs)
-target_link_libraries(t10_sensor t10utils)
+target_compile_features(tof_sensor PUBLIC c_std_99 cxx_std_17)  # Require C99 and C++17
+ament_target_dependencies(tof_sensor rclcpp std_msgs sensor_msgs)
+target_link_libraries(tof_sensor tofcore)
 
-install(TARGETS t10_sensor
+install(TARGETS tof_sensor
   DESTINATION lib/${PROJECT_NAME})
 
 install(DIRECTORY launch rviz2
