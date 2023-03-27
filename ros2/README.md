@@ -1,4 +1,4 @@
-# T10 ROS2 Package
+# ToFCore ROS2 Package
 
 ## To build
 

@@ -43,7 +43,7 @@ bool begins_with(const std::string& needle, const std::string& haystack )
 }
 
 
-T10Sensor::T10Sensor()
+ToFSensor::ToFSensor()
     : Node("tof_sensor", "tofcore")
 {
   rclcpp::QoS pub_qos(10);
@@ -82,14 +82,14 @@ T10Sensor::T10Sensor()
 
   // Setup a callback so that we can react to parameter changes from the outside world.
   parameters_callback_handle_ = this->add_on_set_parameters_callback(
-      std::bind(&T10Sensor::on_set_parameters_callback, this, std::placeholders::_1));
+      std::bind(&ToFSensor::on_set_parameters_callback, this, std::placeholders::_1));
 
   // Update all parameters
   auto params = this->get_parameters(this->list_parameters({}, 1).names);
   this->on_set_parameters_callback(params);
 }
 
-rcl_interfaces::msg::SetParametersResult T10Sensor::on_set_parameters_callback(
+rcl_interfaces::msg::SetParametersResult ToFSensor::on_set_parameters_callback(
     const std::vector<rclcpp::Parameter> &parameters)
 {
   // assume success, if any parameter set below fails this will be changed
@@ -139,7 +139,7 @@ rcl_interfaces::msg::SetParametersResult T10Sensor::on_set_parameters_callback(
 }
 
 
-void T10Sensor::apply_stream_type_param(const rclcpp::Parameter& parameter, rcl_interfaces::msg::SetParametersResult& result)
+void ToFSensor::apply_stream_type_param(const rclcpp::Parameter& parameter, rcl_interfaces::msg::SetParametersResult& result)
 {
   auto value = parameter.as_string();
   RCLCPP_INFO(this->get_logger(), "Handling parameter \"%s\" : \"%s\"", parameter.get_name().c_str(), value.c_str());
@@ -172,7 +172,7 @@ void T10Sensor::apply_stream_type_param(const rclcpp::Parameter& parameter, rcl_
 }
 
 
-void T10Sensor::apply_integration_time_param(const rclcpp::Parameter& parameter, rcl_interfaces::msg::SetParametersResult& result) 
+void ToFSensor::apply_integration_time_param(const rclcpp::Parameter& parameter, rcl_interfaces::msg::SetParametersResult& result) 
 {
   auto value = parameter.as_int();
   RCLCPP_INFO(this->get_logger(), "Handling parameter \"%s\" : %li", parameter.get_name().c_str(), value);
@@ -192,7 +192,7 @@ void T10Sensor::apply_integration_time_param(const rclcpp::Parameter& parameter,
 }
 
 
-void T10Sensor::apply_hdr_mode_param(const rclcpp::Parameter& parameter, rcl_interfaces::msg::SetParametersResult& result) 
+void ToFSensor::apply_hdr_mode_param(const rclcpp::Parameter& parameter, rcl_interfaces::msg::SetParametersResult& result) 
 {
   auto value = parameter.as_string();
   RCLCPP_INFO(this->get_logger(), "Handling parameter \"%s\" : %s", parameter.get_name().c_str(), value.c_str());
@@ -217,7 +217,7 @@ void T10Sensor::apply_hdr_mode_param(const rclcpp::Parameter& parameter, rcl_int
 
 
 
-void T10Sensor::apply_modulation_frequency_param(const rclcpp::Parameter& parameter, rcl_interfaces::msg::SetParametersResult& result) 
+void ToFSensor::apply_modulation_frequency_param(const rclcpp::Parameter& parameter, rcl_interfaces::msg::SetParametersResult& result) 
 {
   auto value = parameter.as_string();
   RCLCPP_INFO(this->get_logger(), "Handling parameter \"%s\" : %s", parameter.get_name().c_str(), value.c_str());
@@ -256,7 +256,7 @@ void T10Sensor::apply_modulation_frequency_param(const rclcpp::Parameter& parame
   interface_->setModulation(mod_freq_index, 0);
 }
 
-void T10Sensor::apply_streaming_param(const rclcpp::Parameter& parameter, rcl_interfaces::msg::SetParametersResult& result) 
+void ToFSensor::apply_streaming_param(const rclcpp::Parameter& parameter, rcl_interfaces::msg::SetParametersResult& result) 
 {
   try {
     auto value = parameter.as_bool();
@@ -277,7 +277,7 @@ void T10Sensor::apply_streaming_param(const rclcpp::Parameter& parameter, rcl_in
 }
 
 
-void T10Sensor::apply_lens_type_param(const rclcpp::Parameter& parameter, rcl_interfaces::msg::SetParametersResult& result)
+void ToFSensor::apply_lens_type_param(const rclcpp::Parameter& parameter, rcl_interfaces::msg::SetParametersResult& result)
 {
   auto value = parameter.as_string();
   RCLCPP_INFO(this->get_logger(), "Handling parameter \"%s\" : %s", parameter.get_name().c_str(), value.c_str());
@@ -310,7 +310,7 @@ void T10Sensor::apply_lens_type_param(const rclcpp::Parameter& parameter, rcl_in
 }
 
 
-void T10Sensor::apply_distance_offset_param(const rclcpp::Parameter& parameter, rcl_interfaces::msg::SetParametersResult&)
+void ToFSensor::apply_distance_offset_param(const rclcpp::Parameter& parameter, rcl_interfaces::msg::SetParametersResult&)
 {
   auto value = parameter.as_int();
   RCLCPP_INFO(this->get_logger(), "Handling parameter \"%s\" : %ld", parameter.get_name().c_str(), value);
@@ -320,7 +320,7 @@ void T10Sensor::apply_distance_offset_param(const rclcpp::Parameter& parameter, 
 
 
 
-void T10Sensor::publish_amplData(const tofcore::Frame &frame, rclcpp::Publisher<sensor_msgs::msg::Image> &pub, const rclcpp::Time& stamp)
+void ToFSensor::publish_amplData(const tofcore::Frame &frame, rclcpp::Publisher<sensor_msgs::msg::Image> &pub, const rclcpp::Time& stamp)
 {
   sensor_msgs::msg::Image img;
   img.header.stamp = stamp;
@@ -334,7 +334,7 @@ void T10Sensor::publish_amplData(const tofcore::Frame &frame, rclcpp::Publisher<
   pub.publish(img);
 }
 
-void T10Sensor::publish_distData(const tofcore::Frame &frame, rclcpp::Publisher<sensor_msgs::msg::Image> &pub, const rclcpp::Time& stamp)
+void ToFSensor::publish_distData(const tofcore::Frame &frame, rclcpp::Publisher<sensor_msgs::msg::Image> &pub, const rclcpp::Time& stamp)
 {
   sensor_msgs::msg::Image img;
   img.header.stamp = stamp;
@@ -348,7 +348,7 @@ void T10Sensor::publish_distData(const tofcore::Frame &frame, rclcpp::Publisher<
   pub.publish(img);
 }
 
-void T10Sensor::publish_pointCloud(const tofcore::Frame &frame, rclcpp::Publisher<sensor_msgs::msg::PointCloud2> &pub, const rclcpp::Time& stamp)
+void ToFSensor::publish_pointCloud(const tofcore::Frame &frame, rclcpp::Publisher<sensor_msgs::msg::PointCloud2> &pub, const rclcpp::Time& stamp)
 {
   sensor_msgs::msg::PointCloud2 cloud_msg{};
   cloud_msg.header.stamp = stamp;
@@ -433,7 +433,7 @@ void T10Sensor::publish_pointCloud(const tofcore::Frame &frame, rclcpp::Publishe
 }
 
 
-void T10Sensor::publish_DCSData(const tofcore::Frame &frame, const rclcpp::Time& stamp)
+void ToFSensor::publish_DCSData(const tofcore::Frame &frame, const rclcpp::Time& stamp)
 {
 
   //TODO Need to figure out the best way to publish image meta-data including:
@@ -467,7 +467,7 @@ void T10Sensor::publish_DCSData(const tofcore::Frame &frame, const rclcpp::Time&
 }
 
 
-void T10Sensor::updateFrame(const tofcore::Frame &frame)
+void ToFSensor::updateFrame(const tofcore::Frame &frame)
 {
   auto stamp = this->now();
   switch (frame.m_dataType)

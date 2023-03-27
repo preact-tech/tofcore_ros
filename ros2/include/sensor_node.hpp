@@ -1,5 +1,5 @@
-#ifndef __ROS2_T10_SENSOR_NODE_H__
-#define __ROS2_T10_SENSOR_NODE_H__
+#ifndef __ROS2_SENSOR_NODE_H__
+#define __ROS2_SENSOR_NODE_H__
 
 #include <cstdio>
 
@@ -17,8 +17,8 @@
 #include <sensor_msgs/point_cloud2_iterator.hpp>
 
 
-/// T10Sensor ROS2 node class for interacting with a T10 sensor/camera
-class T10Sensor : public rclcpp::Node
+/// ToFSensor ROS2 node class for interacting with a PreAct ToF sensor/camera
+class ToFSensor : public rclcpp::Node
 {
   private:
     rclcpp::Publisher<sensor_msgs::msg::Image>::SharedPtr pub_ambient_;
@@ -32,7 +32,7 @@ class T10Sensor : public rclcpp::Node
 
   public:
     /// Standard constructor
-    T10Sensor();
+    ToFSensor();
 
   private:
     /// Callback method to be called when a parameter is changed.
