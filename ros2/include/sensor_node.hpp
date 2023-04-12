@@ -41,19 +41,19 @@ class ToFSensor : public rclcpp::Node
         const std::vector<rclcpp::Parameter> &parameters);
 
     /// Publish received amplitude data in frame to the topic publisher pub with timestamp stamp.
-    void publish_amplData(const tofcore::Frame& frame, rclcpp::Publisher<sensor_msgs::msg::Image>& pub, const rclcpp::Time& stamp);
+    void publish_amplData(const tofcore::Measurement_T& frame, rclcpp::Publisher<sensor_msgs::msg::Image>& pub, const rclcpp::Time& stamp);
 
     /// Publish received distance data in frame to the topic publisher pub with timestamp stamp.
-    void publish_distData(const tofcore::Frame& frame, rclcpp::Publisher<sensor_msgs::msg::Image>& pub, const rclcpp::Time& stamp);
+    void publish_distData(const tofcore::Measurement_T& frame, rclcpp::Publisher<sensor_msgs::msg::Image>& pub, const rclcpp::Time& stamp);
 
     /// Publish a PointCloud using distance data in frame to the topic publisher pub with timestamp stamp.
-    void publish_pointCloud(const tofcore::Frame& frame, rclcpp::Publisher<sensor_msgs::msg::PointCloud2>& pub, const rclcpp::Time& stamp);
+    void publish_pointCloud(const tofcore::Measurement_T& frame, rclcpp::Publisher<sensor_msgs::msg::PointCloud2>& pub, const rclcpp::Time& stamp);
     
     /// Publish a dcs data in frame to the four dcs topic publishers with timestamp stamp.
-    void publish_DCSData(const tofcore::Frame &frame, const rclcpp::Time& stamp);
+    void publish_DCSData(const tofcore::Measurement_T &frame, const rclcpp::Time& stamp);
 
     /// Callback method provided to the tofcore library to notify us when new frame data has come in
-    void updateFrame(const tofcore::Frame& frame);
+    void updateFrame(const tofcore::Measurement_T& frame);
 
     /// Helper methods to send parameter updates down to the sensor
     void apply_stream_type_param(const rclcpp::Parameter& parameter, rcl_interfaces::msg::SetParametersResult& result);

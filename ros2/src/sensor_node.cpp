@@ -63,10 +63,10 @@ ToFSensor::ToFSensor()
 
   // connect to interface
   interface_.reset( new tofcore::Sensor(1, "/dev/ttyACM1"));
-  (void)interface_->subscribeCameraInfo([&](std::shared_ptr<tofcore::CameraInfo> ci) -> void
+  (void)interface_->subscribeMeasurement([&](std::shared_ptr<tofcore::Measurement_T> ci) -> void
                                        { (void)ci; /*updateCameraInfo(ci);*/ });
-  (void)interface_->subscribeFrame([&](std::shared_ptr<tofcore::Frame> f) -> void
-                                  { updateFrame(*f); });
+  // (void)interface_->subscribeFrame([&](std::shared_ptr<tofcore::Measurement_T> f) -> void
+  //                                 { updateFrame(*f); });
 
 
   // Setup ROS parameters
@@ -320,35 +320,39 @@ void ToFSensor::apply_distance_offset_param(const rclcpp::Parameter& parameter, 
 
 
 
-void ToFSensor::publish_amplData(const tofcore::Frame &frame, rclcpp::Publisher<sensor_msgs::msg::Image> &pub, const rclcpp::Time& stamp)
+void ToFSensor::publish_amplData(const tofcore::Measurement_T &frame, rclcpp::Publisher<sensor_msgs::msg::Image> &pub, const rclcpp::Time& stamp)
 {
   sensor_msgs::msg::Image img;
   img.header.stamp = stamp;
   img.header.frame_id = "base_link";
-  img.height = static_cast<uint32_t>(frame.m_height);
-  img.width = static_cast<uint32_t>(frame.m_width);
+  img.height = static_cast<uint32_t>(frame.height());
+  img.width = static_cast<uint32_t>(frame.width());
   img.encoding = sensor_msgs::image_encodings::MONO16;
-  img.step = img.width * frame.m_px_size;
+  img.step = img.width * frame.pixel_size();
   img.is_bigendian = 0;
-  img.data = frame.m_amplData;
+  auto ambient_bv = frame.amplitude();
+  img.data.resize(ambient_bv.size());
+  std::copy(ambient_bv.begin(), ambient_bv.end(), img.data.begin());
   pub.publish(img);
 }
 
-void ToFSensor::publish_distData(const tofcore::Frame &frame, rclcpp::Publisher<sensor_msgs::msg::Image> &pub, const rclcpp::Time& stamp)
+void ToFSensor::publish_distData(const tofcore::Measurement_T &frame, rclcpp::Publisher<sensor_msgs::msg::Image> &pub, const rclcpp::Time& stamp)
 {
   sensor_msgs::msg::Image img;
   img.header.stamp = stamp;
   img.header.frame_id = "base_link";
-  img.height = static_cast<uint32_t>(frame.m_height);
-  img.width = static_cast<uint32_t>(frame.m_width);
+  img.height = static_cast<uint32_t>(frame.height());
+  img.width = static_cast<uint32_t>(frame.width());
   img.encoding = sensor_msgs::image_encodings::MONO16;
-  img.step = img.width * frame.m_px_size;
+  img.step = img.width * frame.pixel_size();
   img.is_bigendian = 1;
-  img.data = frame.m_distData;
+  auto distance_bv = frame.distance();
+  img.data.resize(distance_bv.size());
+  std::copy(distance_bv.begin(), distance_bv.end(), img.data.begin());
   pub.publish(img);
 }
 
-void ToFSensor::publish_pointCloud(const tofcore::Frame &frame, rclcpp::Publisher<sensor_msgs::msg::PointCloud2> &pub, const rclcpp::Time& stamp)
+void ToFSensor::publish_pointCloud(const tofcore::Measurement_T &frame, rclcpp::Publisher<sensor_msgs::msg::PointCloud2> &pub, const rclcpp::Time& stamp)
 {
   sensor_msgs::msg::PointCloud2 cloud_msg{};
   cloud_msg.header.stamp = stamp;
@@ -357,7 +361,7 @@ void ToFSensor::publish_pointCloud(const tofcore::Frame &frame, rclcpp::Publishe
   cloud_msg.is_bigendian = false;
 
   sensor_msgs::PointCloud2Modifier modifier(cloud_msg);
-  modifier.resize(frame.m_height * frame.m_width);
+  modifier.resize(frame.height() * frame.width());
   modifier.setPointCloud2Fields(
       7,
       "x", 1, sensor_msgs::msg::PointField::FLOAT32,
@@ -370,9 +374,9 @@ void ToFSensor::publish_pointCloud(const tofcore::Frame &frame, rclcpp::Publishe
 
   // Note: For some reason setPointCloudFields doesn't set row_step
   //      and resets msg height and m_width so setup them here.
-  cloud_msg.height = static_cast<uint32_t>(frame.m_height);
-  cloud_msg.width = static_cast<uint32_t>(frame.m_width);
-  cloud_msg.row_step = frame.m_width * 19; // 19 is the size in bytes of all the point cloud fields
+  cloud_msg.height = static_cast<uint32_t>(frame.height());
+  cloud_msg.width = static_cast<uint32_t>(frame.width());
+  cloud_msg.row_step = frame.width() * 19; // 19 is the size in bytes of all the point cloud fields
 
   sensor_msgs::PointCloud2Iterator<float> it_x{cloud_msg, "x"};
   sensor_msgs::PointCloud2Iterator<float> it_y{cloud_msg, "y"};
@@ -382,14 +386,14 @@ void ToFSensor::publish_pointCloud(const tofcore::Frame &frame, rclcpp::Publishe
   sensor_msgs::PointCloud2Iterator<uint8_t> it_valid{cloud_msg, "valid"};
   sensor_msgs::PointCloud2Iterator<uint16_t> it_phase{cloud_msg, "distance"};
 
-  auto it_d = frame.m_distData.begin();
-  auto it_a = frame.m_amplData.begin();
+  auto it_d = frame.distance().begin();
+  auto it_a = frame.amplitude().begin();
   uint32_t count = 0;
-  while (it_d != frame.m_distData.end())
+  while (it_d != frame.distance().end())
   {
     auto distance = (*(it_d + 1) << 8) + (*it_d);
-    auto y = count / frame.m_width;
-    auto x = count % frame.m_width;
+    auto y = count / frame.width();
+    auto x = count % frame.width();
     int valid = 0;
     double px, py, pz;
     px = py = pz = 0.1;
@@ -405,7 +409,7 @@ void ToFSensor::publish_pointCloud(const tofcore::Frame &frame, rclcpp::Publishe
     *it_x = px;
     *it_y = py;
     *it_z = pz;
-    if (frame.m_dataType == tofcore::Frame::AMPLITUDE)
+    if (frame.type() == tofcore::Measurement_T::DataType::AMPLITUDE)
     {
       *it_amplitude = (*(it_a + 1) << 8) + (*it_a);
       it_a += 2;
@@ -433,7 +437,7 @@ void ToFSensor::publish_pointCloud(const tofcore::Frame &frame, rclcpp::Publishe
 }
 
 
-void ToFSensor::publish_DCSData(const tofcore::Frame &frame, const rclcpp::Time& stamp)
+void ToFSensor::publish_DCSData(const tofcore::Measurement_T &frame, const rclcpp::Time& stamp)
 {
 
   //TODO Need to figure out the best way to publish image meta-data including:
@@ -446,19 +450,19 @@ void ToFSensor::publish_DCSData(const tofcore::Frame &frame, const rclcpp::Time&
   //
   // Also need to figure out how to publish an ambient frame which will be required for use with the calibration app.
 
-  if(frame.m_dataType == tofcore::Frame::DCS) {
+  if(frame.type() == tofcore::Measurement_T::DataType::DCS) {
     for(auto i = 0; i != 4; ++i) {
         sensor_msgs::msg::Image img;
         img.header.stamp = stamp;
         img.header.frame_id = "base_link";
-        img.height = static_cast<uint32_t>(frame.m_height);
-        img.width = static_cast<uint32_t>(frame.m_width);
+        img.height = static_cast<uint32_t>(frame.height());
+        img.width = static_cast<uint32_t>(frame.width());
         img.encoding = sensor_msgs::image_encodings::MONO16;
-        img.step = img.width * frame.m_px_size;
+        img.step = img.width * frame.pixel_size();
         img.is_bigendian = 0;
         auto frame_size = img.step * img.height;
         img.data.resize(frame_size);
-        auto begin = frame.m_dcsData.begin() + (i*frame_size);
+        auto begin = frame.dcs(i).begin() + (i*frame_size);
         auto end = begin + frame_size;
         std::copy(begin, end, img.data.begin());
         pub_dcs_[i]->publish(img);
@@ -467,32 +471,40 @@ void ToFSensor::publish_DCSData(const tofcore::Frame &frame, const rclcpp::Time&
 }
 
 
-void ToFSensor::updateFrame(const tofcore::Frame &frame)
+void ToFSensor::updateFrame(const tofcore::Measurement_T &frame)
 {
   auto stamp = this->now();
-  switch (frame.m_dataType)
+  switch (frame.type())
   {
-  case tofcore::Frame::GRAYSCALE:
+  case tofcore::Measurement_T::DataType::GRAYSCALE:
   {
     publish_amplData(frame, *pub_ambient_, stamp);
     break;
   }
-  case tofcore::Frame::AMPLITUDE:
+  case tofcore::Measurement_T::DataType::AMPLITUDE:
   {
     publish_amplData(frame, *pub_amplitude_, stamp);
     publish_distData(frame, *pub_distance_, stamp);
     publish_pointCloud(frame, *pub_pcd_, stamp);
     break;
   }
-  case tofcore::Frame::DISTANCE:
+  case tofcore::Measurement_T::DataType::DISTANCE:
   {
     publish_distData(frame, *pub_distance_, stamp);
     publish_pointCloud(frame, *pub_pcd_, stamp);
     break;
   }
-  case tofcore::Frame::DCS:
+  case tofcore::Measurement_T::DataType::DCS:
   {
     publish_DCSData(frame, stamp);
+    break;
+  }
+  case tofcore::Measurement_T::DataType::DISTANCE_AMPLITUDE:
+  {
+    break;
+  }
+  case tofcore::Measurement_T::DataType::UNKNOWN:
+  {
     break;
   }
   }
