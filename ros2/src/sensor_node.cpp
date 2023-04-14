@@ -62,9 +62,9 @@ ToFSensor::ToFSensor()
   }
 
   // connect to interface
-  interface_.reset( new tofcore::Sensor(1, "/dev/ttyACM1"));
-  (void)interface_->subscribeMeasurement([&](std::shared_ptr<tofcore::Measurement_T> ci) -> void
-                                       { (void)ci; /*updateCameraInfo(ci);*/ });
+  interface_.reset( new tofcore::Sensor(1, "/dev/ttyACM0"));
+  (void)interface_->subscribeMeasurement([&](std::shared_ptr<tofcore::Measurement_T> f) -> void
+                                       { updateFrame(*f); });
   // (void)interface_->subscribeFrame([&](std::shared_ptr<tofcore::Measurement_T> f) -> void
   //                                 { updateFrame(*f); });
 
@@ -322,6 +322,7 @@ void ToFSensor::apply_distance_offset_param(const rclcpp::Parameter& parameter, 
 
 void ToFSensor::publish_amplData(const tofcore::Measurement_T &frame, rclcpp::Publisher<sensor_msgs::msg::Image> &pub, const rclcpp::Time& stamp)
 {
+  //RCLCPP_INFO(this->get_logger(), "Publish_amplDataCalled."); 
   sensor_msgs::msg::Image img;
   img.header.stamp = stamp;
   img.header.frame_id = "base_link";
@@ -330,9 +331,28 @@ void ToFSensor::publish_amplData(const tofcore::Measurement_T &frame, rclcpp::Pu
   img.encoding = sensor_msgs::image_encodings::MONO16;
   img.step = img.width * frame.pixel_size();
   img.is_bigendian = 0;
-  auto ambient_bv = frame.amplitude();
-  img.data.resize(ambient_bv.size());
-  std::copy(ambient_bv.begin(), ambient_bv.end(), img.data.begin());
+  auto amplitude_bv = frame.amplitude();
+  img.data.resize(amplitude_bv.size() * sizeof(amplitude_bv.data()[0]));
+  uint8_t* amplitude_begin = (uint8_t*)amplitude_bv.data();
+  std::copy_n(amplitude_begin, img.data.size(), img.data.begin());
+  pub.publish(img);
+}
+
+void ToFSensor::publish_ambientData(const tofcore::Measurement_T &frame, rclcpp::Publisher<sensor_msgs::msg::Image> &pub, const rclcpp::Time& stamp)
+{
+  //RCLCPP_INFO(this->get_logger(), "Publish_amplDataCalled."); 
+  sensor_msgs::msg::Image img;
+  img.header.stamp = stamp;
+  img.header.frame_id = "base_link";
+  img.height = static_cast<uint32_t>(frame.height());
+  img.width = static_cast<uint32_t>(frame.width());
+  img.encoding = sensor_msgs::image_encodings::MONO16;
+  img.step = img.width * frame.pixel_size();
+  img.is_bigendian = 0;
+  auto amplitude_bv = frame.grayscale();
+  img.data.resize(amplitude_bv.size() * sizeof(amplitude_bv.data()[0]));
+  uint8_t* amplitude_begin = (uint8_t*)amplitude_bv.data();
+  std::copy_n(amplitude_begin, img.data.size(), img.data.begin());
   pub.publish(img);
 }
 
@@ -347,8 +367,9 @@ void ToFSensor::publish_distData(const tofcore::Measurement_T &frame, rclcpp::Pu
   img.step = img.width * frame.pixel_size();
   img.is_bigendian = 1;
   auto distance_bv = frame.distance();
-  img.data.resize(distance_bv.size());
-  std::copy(distance_bv.begin(), distance_bv.end(), img.data.begin());
+  img.data.resize(distance_bv.size() * sizeof(distance_bv.data()[0]));
+  uint8_t* dist_begin = (uint8_t*)distance_bv.data();
+  std::copy_n(dist_begin, img.data.size(), img.data.begin());
   pub.publish(img);
 }
 
@@ -391,7 +412,8 @@ void ToFSensor::publish_pointCloud(const tofcore::Measurement_T &frame, rclcpp::
   uint32_t count = 0;
   while (it_d != frame.distance().end())
   {
-    auto distance = (*(it_d + 1) << 8) + (*it_d);
+    //auto distance = (*(it_d + 1) << 8) + (*it_d);
+    auto distance = *it_d;
     auto y = count / frame.width();
     auto x = count % frame.width();
     int valid = 0;
@@ -399,6 +421,7 @@ void ToFSensor::publish_pointCloud(const tofcore::Measurement_T &frame, rclcpp::
     px = py = pz = 0.1;
     if (distance > 0 && distance < 64000)
     {
+      // RCLCPP_INFO(this->get_logger(), "Transform pixel: x:%f, y:%f, dist:%f, px:%f, py:%f, pz:%f", x, y, distance, px, py, pz);
       cartesianTransform_.transformPixel(x, y, distance, px, py, pz);
       px /= 1000.0; // mm -> m
       py /= 1000.0; // mm -> m
@@ -409,10 +432,11 @@ void ToFSensor::publish_pointCloud(const tofcore::Measurement_T &frame, rclcpp::
     *it_x = px;
     *it_y = py;
     *it_z = pz;
-    if (frame.type() == tofcore::Measurement_T::DataType::AMPLITUDE)
+    if (frame.type() == tofcore::Measurement_T::DataType::DISTANCE_AMPLITUDE)
     {
-      *it_amplitude = (*(it_a + 1) << 8) + (*it_a);
-      it_a += 2;
+      //*it_amplitude = (*(it_a + 1) << 8) + (*it_a);
+      *it_amplitude = *it_a;
+      it_a += 1;
     }
     else
     {
@@ -430,9 +454,9 @@ void ToFSensor::publish_pointCloud(const tofcore::Measurement_T &frame, rclcpp::
     ++it_phase;
     ++it_valid;
     ++count;
-    it_d += 2;
+    it_d += 1;
   }
-
+  // RCLCPP_INFO(this->get_logger(), "published point clould");
   pub.publish(cloud_msg);
 }
 
@@ -473,15 +497,16 @@ void ToFSensor::publish_DCSData(const tofcore::Measurement_T &frame, const rclcp
 
 void ToFSensor::updateFrame(const tofcore::Measurement_T &frame)
 {
+  // RCLCPP_INFO(this->get_logger(), "Update Frame Called, Type: %d", frame.type());
   auto stamp = this->now();
   switch (frame.type())
   {
   case tofcore::Measurement_T::DataType::GRAYSCALE:
   {
-    publish_amplData(frame, *pub_ambient_, stamp);
+    publish_ambientData(frame, *pub_ambient_, stamp);
     break;
   }
-  case tofcore::Measurement_T::DataType::AMPLITUDE:
+  case tofcore::Measurement_T::DataType::DISTANCE_AMPLITUDE:
   {
     publish_amplData(frame, *pub_amplitude_, stamp);
     publish_distData(frame, *pub_distance_, stamp);
@@ -497,10 +522,6 @@ void ToFSensor::updateFrame(const tofcore::Measurement_T &frame)
   case tofcore::Measurement_T::DataType::DCS:
   {
     publish_DCSData(frame, stamp);
-    break;
-  }
-  case tofcore::Measurement_T::DataType::DISTANCE_AMPLITUDE:
-  {
     break;
   }
   case tofcore::Measurement_T::DataType::UNKNOWN:

@@ -43,6 +43,9 @@ class ToFSensor : public rclcpp::Node
     /// Publish received amplitude data in frame to the topic publisher pub with timestamp stamp.
     void publish_amplData(const tofcore::Measurement_T& frame, rclcpp::Publisher<sensor_msgs::msg::Image>& pub, const rclcpp::Time& stamp);
 
+    /// Publish received ambient data in frame to the topic publisher pub with timestamp stamp.
+    void publish_ambientData(const tofcore::Measurement_T& frame, rclcpp::Publisher<sensor_msgs::msg::Image>& pub, const rclcpp::Time& stamp);
+
     /// Publish received distance data in frame to the topic publisher pub with timestamp stamp.
     void publish_distData(const tofcore::Measurement_T& frame, rclcpp::Publisher<sensor_msgs::msg::Image>& pub, const rclcpp::Time& stamp);
 
