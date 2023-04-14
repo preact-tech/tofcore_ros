@@ -8,12 +8,14 @@
 #include <memory>
 #include <string>
 #include <vector>
+#include <optional>
 
 #include <rclcpp/rclcpp.hpp>
 #include <sensor_msgs/msg/point_cloud2.hpp>
 #include <sensor_msgs/msg/image.hpp>
 #include <sensor_msgs/point_cloud2_iterator.hpp>
 #include <sensor_msgs/image_encodings.hpp>
+#include <sensor_msgs/msg/temperature.hpp>
 
 using namespace std::chrono_literals;
 using namespace std::string_literals;
@@ -60,6 +62,12 @@ ToFSensor::ToFSensor()
     topic += std::to_string(i);
     pub_dcs_[i] = this->create_publisher<sensor_msgs::msg::Image>(topic, pub_qos);
   }
+  for(size_t i = 0; i != pub_temps_.size(); i++) {
+    std::string topic {"temp"};
+    topic += std::to_string(i);
+    pub_temps_[i] = this->create_publisher<sensor_msgs::msg::Temperature>(topic, pub_qos);
+  }
+  // pub_LEDTemp = this->create_publisher<sensor_msgs::msg::Temperature>("led_temp", pub_qos);
 
   // connect to interface
   interface_.reset( new tofcore::Sensor(1, "/dev/ttyACM0"));
@@ -318,11 +326,25 @@ void ToFSensor::apply_distance_offset_param(const rclcpp::Parameter& parameter, 
   interface_->setOffset(value);
 }
 
+void ToFSensor::publish_tempData(const tofcore::Measurement_T &frame, const rclcpp::Time& stamp)
+{
+  std::array<float, 4> defaultTemps {0.0,0.0,0.0,0.0};
+  //std::array<float, 4> temperatures = frame.sensor_temperatures().value_or(defaultTemps);
+  std::array<float, 4> temperatures = frame.sensor_temperatures().value_or(defaultTemps);
+  for(auto i = 0; i != 4; ++i) {
+    sensor_msgs::msg::Temperature tmp;
+    tmp.header.stamp = stamp;
+    tmp.header.frame_id = "base_link";
+    tmp.temperature = temperatures[i];
+    tmp.variance = 0;
+    pub_temps_[i]->publish(tmp);
+  }
+  
 
+}
 
 void ToFSensor::publish_amplData(const tofcore::Measurement_T &frame, rclcpp::Publisher<sensor_msgs::msg::Image> &pub, const rclcpp::Time& stamp)
 {
-  //RCLCPP_INFO(this->get_logger(), "Publish_amplDataCalled."); 
   sensor_msgs::msg::Image img;
   img.header.stamp = stamp;
   img.header.frame_id = "base_link";
@@ -340,7 +362,6 @@ void ToFSensor::publish_amplData(const tofcore::Measurement_T &frame, rclcpp::Pu
 
 void ToFSensor::publish_ambientData(const tofcore::Measurement_T &frame, rclcpp::Publisher<sensor_msgs::msg::Image> &pub, const rclcpp::Time& stamp)
 {
-  //RCLCPP_INFO(this->get_logger(), "Publish_amplDataCalled."); 
   sensor_msgs::msg::Image img;
   img.header.stamp = stamp;
   img.header.frame_id = "base_link";
@@ -421,7 +442,6 @@ void ToFSensor::publish_pointCloud(const tofcore::Measurement_T &frame, rclcpp::
     px = py = pz = 0.1;
     if (distance > 0 && distance < 64000)
     {
-      // RCLCPP_INFO(this->get_logger(), "Transform pixel: x:%f, y:%f, dist:%f, px:%f, py:%f, pz:%f", x, y, distance, px, py, pz);
       cartesianTransform_.transformPixel(x, y, distance, px, py, pz);
       px /= 1000.0; // mm -> m
       py /= 1000.0; // mm -> m
@@ -456,7 +476,6 @@ void ToFSensor::publish_pointCloud(const tofcore::Measurement_T &frame, rclcpp::
     ++count;
     it_d += 1;
   }
-  // RCLCPP_INFO(this->get_logger(), "published point clould");
   pub.publish(cloud_msg);
 }
 
@@ -497,7 +516,6 @@ void ToFSensor::publish_DCSData(const tofcore::Measurement_T &frame, const rclcp
 
 void ToFSensor::updateFrame(const tofcore::Measurement_T &frame)
 {
-  // RCLCPP_INFO(this->get_logger(), "Update Frame Called, Type: %d", frame.type());
   auto stamp = this->now();
   switch (frame.type())
   {
@@ -511,6 +529,7 @@ void ToFSensor::updateFrame(const tofcore::Measurement_T &frame)
     publish_amplData(frame, *pub_amplitude_, stamp);
     publish_distData(frame, *pub_distance_, stamp);
     publish_pointCloud(frame, *pub_pcd_, stamp);
+    publish_tempData(frame, stamp);
     break;
   }
   case tofcore::Measurement_T::DataType::AMPLITUDE:
