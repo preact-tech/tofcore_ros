@@ -67,15 +67,9 @@ ToFSensor::ToFSensor()
     topic += std::to_string(i);
     pub_temps_[i] = this->create_publisher<sensor_msgs::msg::Temperature>(topic, pub_qos);
   }
-  // pub_LEDTemp = this->create_publisher<sensor_msgs::msg::Temperature>("led_temp", pub_qos);
-
-  // connect to interface
   interface_.reset( new tofcore::Sensor(1, "/dev/ttyACM0"));
   (void)interface_->subscribeMeasurement([&](std::shared_ptr<tofcore::Measurement_T> f) -> void
                                        { updateFrame(*f); });
-  // (void)interface_->subscribeFrame([&](std::shared_ptr<tofcore::Measurement_T> f) -> void
-  //                                 { updateFrame(*f); });
-
 
   // Setup ROS parameters
   this->declare_parameter(PARAM_STREAM_TYPE, "distance_amplitude");
@@ -433,7 +427,6 @@ void ToFSensor::publish_pointCloud(const tofcore::Measurement_T &frame, rclcpp::
   uint32_t count = 0;
   while (it_d != frame.distance().end())
   {
-    //auto distance = (*(it_d + 1) << 8) + (*it_d);
     auto distance = *it_d;
     auto y = count / frame.width();
     auto x = count % frame.width();
@@ -454,7 +447,6 @@ void ToFSensor::publish_pointCloud(const tofcore::Measurement_T &frame, rclcpp::
     *it_z = pz;
     if (frame.type() == tofcore::Measurement_T::DataType::DISTANCE_AMPLITUDE)
     {
-      //*it_amplitude = (*(it_a + 1) << 8) + (*it_a);
       *it_amplitude = *it_a;
       it_a += 1;
     }
@@ -484,7 +476,6 @@ void ToFSensor::publish_DCSData(const tofcore::Measurement_T &frame, const rclcp
 {
 
   //TODO Need to figure out the best way to publish image meta-data including:
-  //  temperature
   //  modulation_frequency
   //  integration_time
   //  binning
