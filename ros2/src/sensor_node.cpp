@@ -513,6 +513,11 @@ void ToFSensor::updateFrame(const tofcore::Measurement_T &frame)
     publish_pointCloud(frame, *pub_pcd_, stamp);
     break;
   }
+  case tofcore::Measurement_T::DataType::AMPLITUDE:
+  {
+    publish_amplData(frame, *pub_amplitude_, stamp);
+    break;
+  }
   case tofcore::Measurement_T::DataType::DISTANCE:
   {
     publish_distData(frame, *pub_distance_, stamp);
