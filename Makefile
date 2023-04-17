@@ -6,9 +6,8 @@ pipeline:
 
 .PHONY: provision
 provision:
-	vcs import < required.repos ros2 --recursive
-	cd ros2/libtofcore && cmake -B build
-	cd ros2/libtofcore/build && make && sudo make install
+	vcs import < required.repos . --recursive
+	ln -fs ../libtofcore ros2/libtofcore
 
 .PHONY: release
 release:
@@ -20,8 +19,8 @@ debug:
 
 .PHONY: clean
 clean:
-	rm -rf build install
+	rm -rf build install log ros2/build ros2/install ros2/log
 
 .PHONY: clobber
 clobber: clean
-	rm -rf ros2/build ros2/install ros2/libtofcore
+	rm -rf libtofcore ros2/libtofcore
