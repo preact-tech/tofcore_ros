@@ -62,11 +62,11 @@ ToFSensor::ToFSensor()
     topic += std::to_string(i);
     pub_dcs_[i] = this->create_publisher<sensor_msgs::msg::Image>(topic, pub_qos);
   }
-  for(size_t i = 0; i != pub_temps_.size(); i++) {
-    std::string topic {"temp"};
-    topic += std::to_string(i);
-    pub_temps_[i] = this->create_publisher<sensor_msgs::msg::Temperature>(topic, pub_qos);
-  }
+  auto sensor_temperature_tl = this->create_publisher<sensor_msgs::msg::Temperature>("sensor_temperature_tl", pub_qos);
+  auto sensor_temperature_tr = this->create_publisher<sensor_msgs::msg::Temperature>("sensor_temperature_tr", pub_qos);
+  auto sensor_temperature_bl = this->create_publisher<sensor_msgs::msg::Temperature>("sensor_temperature_bl", pub_qos);
+  auto sensor_temperature_br = this->create_publisher<sensor_msgs::msg::Temperature>("sensor_temperature_br", pub_qos);
+  
   interface_.reset( new tofcore::Sensor(1, "/dev/ttyACM0"));
   (void)interface_->subscribeMeasurement([&](std::shared_ptr<tofcore::Measurement_T> f) -> void
                                        { updateFrame(*f); });
@@ -322,17 +322,40 @@ void ToFSensor::apply_distance_offset_param(const rclcpp::Parameter& parameter, 
 
 void ToFSensor::publish_tempData(const tofcore::Measurement_T &frame, const rclcpp::Time& stamp)
 {
-  std::array<float, 4> defaultTemps {0.0,0.0,0.0,0.0};
-  //std::array<float, 4> temperatures = frame.sensor_temperatures().value_or(defaultTemps);
-  std::array<float, 4> temperatures = frame.sensor_temperatures().value_or(defaultTemps);
-  for(auto i = 0; i != 4; ++i) {
+  const std::array<float, 4> defaultTemps {0.0,0.0,0.0,0.0};
+  auto temperatures = frame.sensor_temperatures().value_or(defaultTemps);
+  for(const auto& i : temperatures) {
+    int count = 0;
     sensor_msgs::msg::Temperature tmp;
     tmp.header.stamp = stamp;
     tmp.header.frame_id = "base_link";
-    tmp.temperature = temperatures[i];
+    tmp.temperature = i;
     tmp.variance = 0;
-    pub_temps_[i]->publish(tmp);
+    switch (count) {
+    case 0: 
+    {
+      sensor_temperature_tl->publish(tmp);
+      break;
+    }
+    case 1:
+    {
+      sensor_temperature_tr->publish(tmp);
+      break;
+    }
+    case 2:
+    {
+      sensor_temperature_bl->publish(tmp);
+      break;
+    }
+    case 3:
+    {
+      sensor_temperature_br->publish(tmp);
+      break;
+    }
+    }
+    count ++;
   }
+
   
 
 }
@@ -513,6 +536,7 @@ void ToFSensor::updateFrame(const tofcore::Measurement_T &frame)
   case tofcore::Measurement_T::DataType::GRAYSCALE:
   {
     publish_ambientData(frame, *pub_ambient_, stamp);
+    publish_tempData(frame, stamp);
     break;
   }
   case tofcore::Measurement_T::DataType::DISTANCE_AMPLITUDE:
@@ -525,18 +549,22 @@ void ToFSensor::updateFrame(const tofcore::Measurement_T &frame)
   }
   case tofcore::Measurement_T::DataType::AMPLITUDE:
   {
+    // Probably not the case we just stream amplitude, but its here
     publish_amplData(frame, *pub_amplitude_, stamp);
+    publish_tempData(frame, stamp);
     break;
   }
   case tofcore::Measurement_T::DataType::DISTANCE:
   {
     publish_distData(frame, *pub_distance_, stamp);
     publish_pointCloud(frame, *pub_pcd_, stamp);
+    publish_tempData(frame, stamp);
     break;
   }
   case tofcore::Measurement_T::DataType::DCS:
   {
     publish_DCSData(frame, stamp);
+    publish_tempData(frame, stamp);
     break;
   }
   case tofcore::Measurement_T::DataType::UNKNOWN:

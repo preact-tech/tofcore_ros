@@ -27,7 +27,10 @@ class ToFSensor : public rclcpp::Node
     rclcpp::Publisher<sensor_msgs::msg::Image>::SharedPtr pub_amplitude_;
     rclcpp::Publisher<sensor_msgs::msg::PointCloud2>::SharedPtr pub_pcd_;
     std::array<rclcpp::Publisher<sensor_msgs::msg::Image>::SharedPtr, 4> pub_dcs_;
-    std::array<rclcpp::Publisher<sensor_msgs::msg::Temperature>::SharedPtr, 4> pub_temps_;
+    rclcpp::Publisher<sensor_msgs::msg::Temperature>::SharedPtr sensor_temperature_tl;
+    rclcpp::Publisher<sensor_msgs::msg::Temperature>::SharedPtr sensor_temperature_tr;
+    rclcpp::Publisher<sensor_msgs::msg::Temperature>::SharedPtr sensor_temperature_bl;
+    rclcpp::Publisher<sensor_msgs::msg::Temperature>::SharedPtr sensor_temperature_br;
 
     std::unique_ptr<tofcore::Sensor> interface_;
     tofcore::CartesianTransform cartesianTransform_;
