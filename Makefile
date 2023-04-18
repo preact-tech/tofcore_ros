@@ -13,10 +13,6 @@ provision:
 release:
 	colcon build 
 
-.PHONY: debug
-debug:
-	colcon build
-
 .PHONY: clean
 clean:
 	rm -rf build install log ros2/build ros2/install ros2/log

@@ -324,8 +324,9 @@ void ToFSensor::publish_tempData(const tofcore::Measurement_T &frame, const rclc
 {
   const std::array<float, 4> defaultTemps {0.0,0.0,0.0,0.0};
   auto temperatures = frame.sensor_temperatures().value_or(defaultTemps);
+  int count = 0;
+
   for(const auto& i : temperatures) {
-    int count = 0;
     sensor_msgs::msg::Temperature tmp;
     tmp.header.stamp = stamp;
     tmp.header.frame_id = "base_link";
