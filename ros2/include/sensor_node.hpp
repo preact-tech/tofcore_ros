@@ -16,9 +16,6 @@
 #include <sensor_msgs/msg/image.hpp>
 #include <sensor_msgs/point_cloud2_iterator.hpp>
 #include <sensor_msgs/msg/temperature.hpp>
-#include <std_msgs/msg/int16.hpp>
-#include <std_msgs/msg/int32.hpp>
-#include <std_msgs/msg/int8.hpp>
 
 
 /// ToFSensor ROS2 node class for interacting with a PreAct ToF sensor/camera
@@ -34,13 +31,6 @@ class ToFSensor : public rclcpp::Node
     rclcpp::Publisher<sensor_msgs::msg::Temperature>::SharedPtr sensor_temperature_tr;
     rclcpp::Publisher<sensor_msgs::msg::Temperature>::SharedPtr sensor_temperature_bl;
     rclcpp::Publisher<sensor_msgs::msg::Temperature>::SharedPtr sensor_temperature_br;
-    rclcpp::Publisher<std_msgs::msg::Int16>::SharedPtr pub_integration_time_0;
-    rclcpp::Publisher<std_msgs::msg::Int16>::SharedPtr pub_integration_time_1;
-    rclcpp::Publisher<std_msgs::msg::Int16>::SharedPtr pub_integration_time_2;
-    rclcpp::Publisher<std_msgs::msg::Int16>::SharedPtr pub_integration_time_3;
-    rclcpp::Publisher<std_msgs::msg::Int32>::SharedPtr pub_modulation_freq;
-    rclcpp::Publisher<std_msgs::msg::Int8>::SharedPtr pub_vertical_binning;
-    rclcpp::Publisher<std_msgs::msg::Int8>::SharedPtr pub_horizontal_binning;
 
     std::unique_ptr<tofcore::Sensor> interface_;
     tofcore::CartesianTransform cartesianTransform_;

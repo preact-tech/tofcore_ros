@@ -69,14 +69,6 @@ ToFSensor::ToFSensor()
   sensor_temperature_tr = this->create_publisher<sensor_msgs::msg::Temperature>("sensor_temperature_tr", pub_qos);
   sensor_temperature_bl = this->create_publisher<sensor_msgs::msg::Temperature>("sensor_temperature_bl", pub_qos);
   sensor_temperature_br = this->create_publisher<sensor_msgs::msg::Temperature>("sensor_temperature_br", pub_qos);
-
-  pub_integration_time_0 = this->create_publisher<std_msgs::msg::Int16>("sensor_integration_time_0", pub_qos);
-  pub_integration_time_1 = this->create_publisher<std_msgs::msg::Int16>("sensor_integration_time_1", pub_qos);
-  pub_integration_time_2 = this->create_publisher<std_msgs::msg::Int16>("sensor_integration_time_2", pub_qos);
-  pub_integration_time_3 = this->create_publisher<std_msgs::msg::Int16>("sensor_integration_time_3", pub_qos);
-  pub_modulation_freq = this->create_publisher<std_msgs::msg::Int32>("sensor_modulation_freq", pub_qos);
-  pub_vertical_binning = this->create_publisher<std_msgs::msg::Int8>("sensor_vertical_binning", pub_qos);
-  pub_horizontal_binning = this->create_publisher<std_msgs::msg::Int8>("sensor_horizontal_binning", pub_qos);
   
   interface_.reset( new tofcore::Sensor(1, "/dev/ttyACM0"));
   (void)interface_->subscribeMeasurement([&](std::shared_ptr<tofcore::Measurement_T> f) -> void
@@ -381,52 +373,6 @@ void ToFSensor::publish_tempData(const tofcore::Measurement_T &frame, const rclc
   }
 
   
-
-}
-
-void ToFSensor::publish_metadata(const tofcore::Measurement_T &frame)
-{
-  /// Publish integration times
-  const std::array<uint16_t, 4> defaultIntTimes {0,0,0,0};
-  auto integration_times_ = frame.integration_times().value_or(defaultIntTimes);
-  int count = 0;
-  for(const auto& i : integration_times_)
-  {
-    std_msgs::msg::Int16 integrationTime;
-    integrationTime.data = static_cast<int16_t>(i);
-    switch(count){
-      case 0:
-      {
-        pub_integration_time_0->publish(integrationTime); 
-        break;
-      }
-      case 1:
-      {
-        pub_integration_time_1->publish(integrationTime); 
-        break;
-      }
-      case 2:
-      {
-        pub_integration_time_2->publish(integrationTime);
-        break;
-      }
-      case 3:
-      {
-        pub_integration_time_3->publish(integrationTime);
-        break;
-      }
-    }
-    count++;
-  }
-
-  /// Publish modulation frequency
-  std_msgs::msg::Int32 mod_freq;
-  const std::vector<uint32_t> defaultModFreq;
-  mod_freq.data = static_cast<int32_t>(frame.modulation_frequencies().value_or(defaultModFreq)[0]);
-  pub_modulation_freq->publish(mod_freq);
-
-  /// Publish Horizontal and Vertical Binning
-
 
 }
 
