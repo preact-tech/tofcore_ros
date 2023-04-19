@@ -37,6 +37,7 @@ constexpr auto PARAM_STREAMING = "streaming";
 constexpr auto PARAM_LENS_TYPE = "lens_type";
 constexpr auto PARAM_MODULATION_FREQ = "modulation_frequency";
 constexpr auto PARAM_DISTANCE_OFFSET = "distance_offset";
+constexpr auto PARAM_MINIMUM_AMPLITUDE = "minimum_amplitude";
 
 /// Quick helper function that return true if the string haystack starts with the string needle 
 bool begins_with(const std::string& needle, const std::string& haystack ) 
@@ -57,15 +58,25 @@ ToFSensor::ToFSensor()
   pub_distance_ = this->create_publisher<sensor_msgs::msg::Image>("distance", pub_qos);
   pub_amplitude_ = this->create_publisher<sensor_msgs::msg::Image>("amplitude", pub_qos);
   pub_pcd_ = this->create_publisher<sensor_msgs::msg::PointCloud2>("points", pub_qos);
+  
   for(size_t i = 0; i != pub_dcs_.size(); i++) {
     std::string topic {"dcs"};
     topic += std::to_string(i);
     pub_dcs_[i] = this->create_publisher<sensor_msgs::msg::Image>(topic, pub_qos);
   }
+
   sensor_temperature_tl = this->create_publisher<sensor_msgs::msg::Temperature>("sensor_temperature_tl", pub_qos);
   sensor_temperature_tr = this->create_publisher<sensor_msgs::msg::Temperature>("sensor_temperature_tr", pub_qos);
   sensor_temperature_bl = this->create_publisher<sensor_msgs::msg::Temperature>("sensor_temperature_bl", pub_qos);
   sensor_temperature_br = this->create_publisher<sensor_msgs::msg::Temperature>("sensor_temperature_br", pub_qos);
+
+  pub_integration_time_0 = this->create_publisher<std_msgs::msg::Int16>("sensor_integration_time_0", pub_qos);
+  pub_integration_time_1 = this->create_publisher<std_msgs::msg::Int16>("sensor_integration_time_1", pub_qos);
+  pub_integration_time_2 = this->create_publisher<std_msgs::msg::Int16>("sensor_integration_time_2", pub_qos);
+  pub_integration_time_3 = this->create_publisher<std_msgs::msg::Int16>("sensor_integration_time_3", pub_qos);
+  pub_modulation_freq = this->create_publisher<std_msgs::msg::Int32>("sensor_modulation_freq", pub_qos);
+  pub_vertical_binning = this->create_publisher<std_msgs::msg::Int8>("sensor_vertical_binning", pub_qos);
+  pub_horizontal_binning = this->create_publisher<std_msgs::msg::Int8>("sensor_horizontal_binning", pub_qos);
   
   interface_.reset( new tofcore::Sensor(1, "/dev/ttyACM0"));
   (void)interface_->subscribeMeasurement([&](std::shared_ptr<tofcore::Measurement_T> f) -> void
@@ -78,9 +89,10 @@ ToFSensor::ToFSensor()
   this->declare_parameter(PARAM_INTEGRATION_TIME2, 0);
   this->declare_parameter(PARAM_HDR_MODE, "off");
   this->declare_parameter(PARAM_STREAMING, true);
-  this->declare_parameter(PARAM_LENS_TYPE, "wf");
+  this->declare_parameter(PARAM_LENS_TYPE, "r");
   this->declare_parameter(PARAM_MODULATION_FREQ, "12");
   this->declare_parameter(PARAM_DISTANCE_OFFSET, 0);
+  this->declare_parameter(PARAM_MINIMUM_AMPLITUDE, 0);
 
   // Setup a callback so that we can react to parameter changes from the outside world.
   parameters_callback_handle_ = this->add_on_set_parameters_callback(
@@ -134,7 +146,10 @@ rcl_interfaces::msg::SetParametersResult ToFSensor::on_set_parameters_callback(
     else if( param_name == PARAM_DISTANCE_OFFSET)
     {
       this->apply_distance_offset_param(parameter, result);
-
+    }
+    else if( param_name == PARAM_MINIMUM_AMPLITUDE)
+    {
+      this->apply_minimum_amplitude_param(parameter, result);
     }
   }
   return result;
@@ -320,6 +335,14 @@ void ToFSensor::apply_distance_offset_param(const rclcpp::Parameter& parameter, 
   interface_->setOffset(value);
 }
 
+void ToFSensor::apply_minimum_amplitude_param(const rclcpp::Parameter& parameter, rcl_interfaces::msg::SetParametersResult&)
+{
+  auto value = parameter.as_int();
+  RCLCPP_INFO(this->get_logger(), "Handling parameter \"%s\" : %ld", parameter.get_name().c_str(), value);
+
+  interface_->setMinAmplitude(value);
+}
+
 void ToFSensor::publish_tempData(const tofcore::Measurement_T &frame, const rclcpp::Time& stamp)
 {
   const std::array<float, 4> defaultTemps {0.0,0.0,0.0,0.0};
@@ -333,31 +356,77 @@ void ToFSensor::publish_tempData(const tofcore::Measurement_T &frame, const rclc
     tmp.temperature = i;
     tmp.variance = 0;
     switch (count) {
-    case 0: 
-    {
-      sensor_temperature_tl->publish(tmp);
-      break;
-    }
-    case 1:
-    {
-      sensor_temperature_tr->publish(tmp);
-      break;
-    }
-    case 2:
-    {
-      sensor_temperature_bl->publish(tmp);
-      break;
-    }
-    case 3:
-    {
-      sensor_temperature_br->publish(tmp);
-      break;
-    }
+      case 0: 
+      {
+        sensor_temperature_tl->publish(tmp);
+        break;
+      }
+      case 1:
+      {
+        sensor_temperature_tr->publish(tmp);
+        break;
+      }
+      case 2:
+      {
+        sensor_temperature_bl->publish(tmp);
+        break;
+      }
+      case 3:
+      {
+        sensor_temperature_br->publish(tmp);
+        break;
+      }
     }
     count ++;
   }
 
   
+
+}
+
+void ToFSensor::publish_metadata(const tofcore::Measurement_T &frame)
+{
+  /// Publish integration times
+  const std::array<uint16_t, 4> defaultIntTimes {0,0,0,0};
+  auto integration_times_ = frame.integration_times().value_or(defaultIntTimes);
+  int count = 0;
+  for(const auto& i : integration_times_)
+  {
+    std_msgs::msg::Int16 integrationTime;
+    integrationTime.data = static_cast<int16_t>(i);
+    switch(count){
+      case 0:
+      {
+        pub_integration_time_0->publish(integrationTime); 
+        break;
+      }
+      case 1:
+      {
+        pub_integration_time_1->publish(integrationTime); 
+        break;
+      }
+      case 2:
+      {
+        pub_integration_time_2->publish(integrationTime);
+        break;
+      }
+      case 3:
+      {
+        pub_integration_time_3->publish(integrationTime);
+        break;
+      }
+    }
+    count++;
+  }
+
+  /// Publish modulation frequency
+  std_msgs::msg::Int32 mod_freq;
+  const std::vector<uint32_t> defaultModFreq;
+  mod_freq.data = static_cast<int32_t>(frame.modulation_frequencies().value_or(defaultModFreq)[0]);
+  pub_modulation_freq->publish(mod_freq);
+
+  /// Publish Horizontal and Vertical Binning
+
 
 }
 
@@ -516,13 +585,17 @@ void ToFSensor::publish_DCSData(const tofcore::Measurement_T &frame, const rclcp
         img.height = static_cast<uint32_t>(frame.height());
         img.width = static_cast<uint32_t>(frame.width());
         img.encoding = sensor_msgs::image_encodings::MONO16;
+        auto dcsFrame = frame.dcs(i);
         img.step = img.width * frame.pixel_size();
         img.is_bigendian = 0;
         auto frame_size = img.step * img.height;
         img.data.resize(frame_size);
-        auto begin = frame.dcs(i).begin() + (i*frame_size);
-        auto end = begin + frame_size;
-        std::copy(begin, end, img.data.begin());
+        // auto begin = frame.dcs(i).begin() + (i*frame_size);
+        // auto end = begin + frame_size;
+        // img.data.resize(dcsFrame.size());
+
+        // std::copy(begin, end, img.data.begin());
+        std::copy(dcsFrame.begin(), dcsFrame.end(), img.data.begin());
         pub_dcs_[i]->publish(img);
     }
   }
@@ -538,6 +611,7 @@ void ToFSensor::updateFrame(const tofcore::Measurement_T &frame)
   {
     publish_ambientData(frame, *pub_ambient_, stamp);
     publish_tempData(frame, stamp);
+    publish_metadata(frame);
     break;
   }
   case tofcore::Measurement_T::DataType::DISTANCE_AMPLITUDE:
@@ -546,6 +620,7 @@ void ToFSensor::updateFrame(const tofcore::Measurement_T &frame)
     publish_distData(frame, *pub_distance_, stamp);
     publish_pointCloud(frame, *pub_pcd_, stamp);
     publish_tempData(frame, stamp);
+    publish_metadata(frame);
     break;
   }
   case tofcore::Measurement_T::DataType::AMPLITUDE:
@@ -553,6 +628,7 @@ void ToFSensor::updateFrame(const tofcore::Measurement_T &frame)
     // Probably not the case we just stream amplitude, but its here
     publish_amplData(frame, *pub_amplitude_, stamp);
     publish_tempData(frame, stamp);
+    publish_metadata(frame);
     break;
   }
   case tofcore::Measurement_T::DataType::DISTANCE:
@@ -560,12 +636,14 @@ void ToFSensor::updateFrame(const tofcore::Measurement_T &frame)
     publish_distData(frame, *pub_distance_, stamp);
     publish_pointCloud(frame, *pub_pcd_, stamp);
     publish_tempData(frame, stamp);
+    publish_metadata(frame);
     break;
   }
   case tofcore::Measurement_T::DataType::DCS:
   {
     publish_DCSData(frame, stamp);
     publish_tempData(frame, stamp);
+    publish_metadata(frame);
     break;
   }
   case tofcore::Measurement_T::DataType::UNKNOWN:

@@ -16,6 +16,9 @@
 #include <sensor_msgs/msg/image.hpp>
 #include <sensor_msgs/point_cloud2_iterator.hpp>
 #include <sensor_msgs/msg/temperature.hpp>
+#include <std_msgs/msg/int16.hpp>
+#include <std_msgs/msg/int32.hpp>
+#include <std_msgs/msg/int8.hpp>
 
 
 /// ToFSensor ROS2 node class for interacting with a PreAct ToF sensor/camera
@@ -31,6 +34,13 @@ class ToFSensor : public rclcpp::Node
     rclcpp::Publisher<sensor_msgs::msg::Temperature>::SharedPtr sensor_temperature_tr;
     rclcpp::Publisher<sensor_msgs::msg::Temperature>::SharedPtr sensor_temperature_bl;
     rclcpp::Publisher<sensor_msgs::msg::Temperature>::SharedPtr sensor_temperature_br;
+    rclcpp::Publisher<std_msgs::msg::Int16>::SharedPtr pub_integration_time_0;
+    rclcpp::Publisher<std_msgs::msg::Int16>::SharedPtr pub_integration_time_1;
+    rclcpp::Publisher<std_msgs::msg::Int16>::SharedPtr pub_integration_time_2;
+    rclcpp::Publisher<std_msgs::msg::Int16>::SharedPtr pub_integration_time_3;
+    rclcpp::Publisher<std_msgs::msg::Int32>::SharedPtr pub_modulation_freq;
+    rclcpp::Publisher<std_msgs::msg::Int8>::SharedPtr pub_vertical_binning;
+    rclcpp::Publisher<std_msgs::msg::Int8>::SharedPtr pub_horizontal_binning;
 
     std::unique_ptr<tofcore::Sensor> interface_;
     tofcore::CartesianTransform cartesianTransform_;
@@ -47,6 +57,9 @@ class ToFSensor : public rclcpp::Node
 
     /// Publish received temperature data in frame to the to four different temperature topics (pub_temps_) with timestamp stamp.
     void publish_tempData(const tofcore::Measurement_T& frame, const rclcpp::Time& stamp);
+
+    /// Publish meta data using all the metadata publishers, no timestamp or header info, just int16 values
+    void publish_metadata(const tofcore::Measurement_T &frame);
 
     /// Publish received amplitude data in frame to the topic publisher pub with timestamp stamp.
     void publish_amplData(const tofcore::Measurement_T& frame, rclcpp::Publisher<sensor_msgs::msg::Image>& pub, const rclcpp::Time& stamp);
@@ -74,6 +87,7 @@ class ToFSensor : public rclcpp::Node
     void apply_lens_type_param(const rclcpp::Parameter& parameter, rcl_interfaces::msg::SetParametersResult& result);
     void apply_modulation_frequency_param(const rclcpp::Parameter& parameter, rcl_interfaces::msg::SetParametersResult& result);
     void apply_distance_offset_param(const rclcpp::Parameter& parameter, rcl_interfaces::msg::SetParametersResult& result);
+    void apply_minimum_amplitude_param(const rclcpp::Parameter& parameter, rcl_interfaces::msg::SetParametersResult& result);
 
 };
 
