@@ -48,9 +48,6 @@ class ToFSensor : public rclcpp::Node
     /// Publish received temperature data in frame to the to four different temperature topics (pub_temps_) with timestamp stamp.
     void publish_tempData(const tofcore::Measurement_T& frame, const rclcpp::Time& stamp);
 
-    /// Publish meta data using all the metadata publishers, no timestamp or header info, just int16 values
-    void publish_metadata(const tofcore::Measurement_T &frame);
-
     /// Publish received amplitude data in frame to the topic publisher pub with timestamp stamp.
     void publish_amplData(const tofcore::Measurement_T& frame, rclcpp::Publisher<sensor_msgs::msg::Image>& pub, const rclcpp::Time& stamp);
 
