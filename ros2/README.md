@@ -6,13 +6,17 @@
 
 - A release of ROS2 installed and active. So far all testing has been done with
   with the Galactic release but things should work with any recent ROS2 release.
-- [libtofcore](https://bitbucket.org/preact-tech/libtofcore/src/develop/) either built and installed to CMAKE_INSTALL_PREFIX or cloned to the subdirectory ./libtofcore .
+- [libtofcore] cloned to the subdirectory ./libtofcore .
+  This can be achieved using the `make provision` command
+  ```
+  make provision
+  ```
 
 ### Building
 
 Once the prerequisits are installed and actived (the case of ROS) building should be as easy as: 
 ```
-colcon build
+make release
 source ./install/setup.bash
 ```
 

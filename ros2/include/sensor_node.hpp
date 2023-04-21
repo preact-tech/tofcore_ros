@@ -15,6 +15,7 @@
 #include <sensor_msgs/msg/point_cloud2.hpp>
 #include <sensor_msgs/msg/image.hpp>
 #include <sensor_msgs/point_cloud2_iterator.hpp>
+#include <sensor_msgs/msg/temperature.hpp>
 
 
 /// ToFSensor ROS2 node class for interacting with a PreAct ToF sensor/camera
@@ -26,6 +27,10 @@ class ToFSensor : public rclcpp::Node
     rclcpp::Publisher<sensor_msgs::msg::Image>::SharedPtr pub_amplitude_;
     rclcpp::Publisher<sensor_msgs::msg::PointCloud2>::SharedPtr pub_pcd_;
     std::array<rclcpp::Publisher<sensor_msgs::msg::Image>::SharedPtr, 4> pub_dcs_;
+    rclcpp::Publisher<sensor_msgs::msg::Temperature>::SharedPtr sensor_temperature_tl;
+    rclcpp::Publisher<sensor_msgs::msg::Temperature>::SharedPtr sensor_temperature_tr;
+    rclcpp::Publisher<sensor_msgs::msg::Temperature>::SharedPtr sensor_temperature_bl;
+    rclcpp::Publisher<sensor_msgs::msg::Temperature>::SharedPtr sensor_temperature_br;
 
     std::unique_ptr<tofcore::Sensor> interface_;
     tofcore::CartesianTransform cartesianTransform_;
@@ -40,20 +45,26 @@ class ToFSensor : public rclcpp::Node
     rcl_interfaces::msg::SetParametersResult on_set_parameters_callback(
         const std::vector<rclcpp::Parameter> &parameters);
 
+    /// Publish received temperature data in frame to the to four different temperature topics (pub_temps_) with timestamp stamp.
+    void publish_tempData(const tofcore::Measurement_T& frame, const rclcpp::Time& stamp);
+
     /// Publish received amplitude data in frame to the topic publisher pub with timestamp stamp.
-    void publish_amplData(const tofcore::Frame& frame, rclcpp::Publisher<sensor_msgs::msg::Image>& pub, const rclcpp::Time& stamp);
+    void publish_amplData(const tofcore::Measurement_T& frame, rclcpp::Publisher<sensor_msgs::msg::Image>& pub, const rclcpp::Time& stamp);
+
+    /// Publish received ambient data in frame to the topic publisher pub with timestamp stamp.
+    void publish_ambientData(const tofcore::Measurement_T& frame, rclcpp::Publisher<sensor_msgs::msg::Image>& pub, const rclcpp::Time& stamp);
 
     /// Publish received distance data in frame to the topic publisher pub with timestamp stamp.
-    void publish_distData(const tofcore::Frame& frame, rclcpp::Publisher<sensor_msgs::msg::Image>& pub, const rclcpp::Time& stamp);
+    void publish_distData(const tofcore::Measurement_T& frame, rclcpp::Publisher<sensor_msgs::msg::Image>& pub, const rclcpp::Time& stamp);
 
     /// Publish a PointCloud using distance data in frame to the topic publisher pub with timestamp stamp.
-    void publish_pointCloud(const tofcore::Frame& frame, rclcpp::Publisher<sensor_msgs::msg::PointCloud2>& pub, const rclcpp::Time& stamp);
+    void publish_pointCloud(const tofcore::Measurement_T& frame, rclcpp::Publisher<sensor_msgs::msg::PointCloud2>& pub, const rclcpp::Time& stamp);
     
     /// Publish a dcs data in frame to the four dcs topic publishers with timestamp stamp.
-    void publish_DCSData(const tofcore::Frame &frame, const rclcpp::Time& stamp);
+    void publish_DCSData(const tofcore::Measurement_T &frame, const rclcpp::Time& stamp);
 
     /// Callback method provided to the tofcore library to notify us when new frame data has come in
-    void updateFrame(const tofcore::Frame& frame);
+    void updateFrame(const tofcore::Measurement_T& frame);
 
     /// Helper methods to send parameter updates down to the sensor
     void apply_stream_type_param(const rclcpp::Parameter& parameter, rcl_interfaces::msg::SetParametersResult& result);
@@ -63,6 +74,7 @@ class ToFSensor : public rclcpp::Node
     void apply_lens_type_param(const rclcpp::Parameter& parameter, rcl_interfaces::msg::SetParametersResult& result);
     void apply_modulation_frequency_param(const rclcpp::Parameter& parameter, rcl_interfaces::msg::SetParametersResult& result);
     void apply_distance_offset_param(const rclcpp::Parameter& parameter, rcl_interfaces::msg::SetParametersResult& result);
+    void apply_minimum_amplitude_param(const rclcpp::Parameter& parameter, rcl_interfaces::msg::SetParametersResult& result);
 
 };
 

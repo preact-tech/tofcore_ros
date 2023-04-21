@@ -1,6 +1,9 @@
 # Prerequisites
 *.d
 
+# VS Code
+.vscode/*
+
 # Compiled Object files
 *.slo
 *.lo
@@ -50,4 +53,4 @@ _deps
 **/[Dd]ebug/
 **/[Ii]nstall/
 **/[Ll]og/
-/libtofcore/
+**/libtofcore
