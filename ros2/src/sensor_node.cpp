@@ -400,7 +400,7 @@ void ToFSensor::publish_ambientData(const tofcore::Measurement_T &frame, rclcpp:
   img.encoding = sensor_msgs::image_encodings::MONO16;
   img.step = img.width * frame.pixel_size();
   img.is_bigendian = 0;
-  auto amplitude_bv = frame.grayscale();
+  auto amplitude_bv = frame.ambient();
   img.data.resize(amplitude_bv.size() * sizeof(amplitude_bv.data()[0]));
   uint8_t* amplitude_begin = (uint8_t*)amplitude_bv.data();
   std::copy_n(amplitude_begin, img.data.size(), img.data.begin());
@@ -547,6 +547,12 @@ void ToFSensor::updateFrame(const tofcore::Measurement_T &frame)
   auto stamp = this->now();
   switch (frame.type())
   {
+  case tofcore::Measurement_T::DataType::AMBIENT:
+  {
+    publish_ambientData(frame, *pub_ambient_, stamp);
+    publish_tempData(frame, stamp);
+    break;
+  }
   case tofcore::Measurement_T::DataType::GRAYSCALE:
   {
     publish_ambientData(frame, *pub_ambient_, stamp);
