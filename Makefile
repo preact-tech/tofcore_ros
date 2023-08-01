@@ -8,7 +8,7 @@ pipeline:
 provision:
 	vcs import < required.repos . --recursive
 	rm -rf ros2/libtofcore
-	ln -fs "${PWD}/libtofcore" "${PWD}/ros2/libtofcore"
+	ln -fs ../libtofcore ros2/libtofcore
 
 .PHONY: release
 release:
