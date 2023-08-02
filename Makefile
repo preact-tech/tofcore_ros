@@ -12,7 +12,7 @@ provision:
 
 .PHONY: release
 release:
-	colcon build 
+	cd ros2 && colcon build 
 
 .PHONY: clean
 clean:
