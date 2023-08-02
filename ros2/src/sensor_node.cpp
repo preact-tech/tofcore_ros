@@ -156,10 +156,6 @@ rcl_interfaces::msg::SetParametersResult ToFSensor::on_set_parameters_callback(
     {
       this->apply_streaming_param(parameter, result);
     }
-    else if( name == LENS_TYPE)
-    {
-      this->apply_lens_type_param(parameter, result);
-    }
     else if( name == MODULATION_FREQUENCY)
     {
       this->apply_modulation_frequency_param(parameter, result);
