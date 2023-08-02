@@ -156,10 +156,6 @@ void ToFSensor::apply_stream_type_param(const rclcpp::Parameter& parameter, rcl_
   {
     interface_->streamDistance();
   }
-  else if (value == "grayscale")
-  {
-    interface_->streamGrayscale();
-  }
   else if (value == "distance_amplitude")
   {
     interface_->streamDistanceAmplitude();
@@ -196,7 +192,7 @@ void ToFSensor::apply_integration_time_param(const rclcpp::Parameter& parameter,
     int_times[0] = (parameter.get_name() == PARAM_INTEGRATION_TIME0) ? value : get_parameter(PARAM_INTEGRATION_TIME0).as_int();
     int_times[1] = (parameter.get_name() == PARAM_INTEGRATION_TIME1) ? value : get_parameter(PARAM_INTEGRATION_TIME1).as_int();
     int_times[2] = (parameter.get_name() == PARAM_INTEGRATION_TIME2) ? value : get_parameter(PARAM_INTEGRATION_TIME1).as_int();
-    interface_->setIntegrationTime(int_times[0], int_times[1], int_times[2], 500/*hard code greyscale int time for now*/);
+    interface_->setIntegrationTimes(int_times[0], int_times[1], int_times[2]);
   }
 }
 

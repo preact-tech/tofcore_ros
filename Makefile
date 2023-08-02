@@ -7,11 +7,12 @@ pipeline:
 .PHONY: provision
 provision:
 	vcs import < required.repos . --recursive
+	rm -rf ros2/libtofcore
 	ln -fs ../libtofcore ros2/libtofcore
 
 .PHONY: release
 release:
-	colcon build 
+	cd ros2 && colcon build 
 
 .PHONY: clean
 clean:
