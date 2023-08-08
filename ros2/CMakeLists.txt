@@ -13,6 +13,10 @@ find_package(ament_cmake REQUIRED)
 find_package(rclcpp REQUIRED)
 find_package(std_msgs REQUIRED)
 find_package(sensor_msgs REQUIRED)
+find_package(preact_msgs REQUIRED)
+find_package(rosidl_typesupport_c REQUIRED)
+find_package(rosidl_typesupport_cpp REQUIRED)
+
 
 find_package(ToFCore)
 if(NOT TARGET ToFCore::ToFCore)
@@ -31,8 +35,10 @@ target_include_directories(tof_sensor PUBLIC
   $<INSTALL_INTERFACE:include>
   )
 target_compile_features(tof_sensor PUBLIC c_std_99 cxx_std_17)  # Require C99 and C++17
-ament_target_dependencies(tof_sensor rclcpp std_msgs sensor_msgs)
+ament_target_dependencies(tof_sensor rclcpp std_msgs sensor_msgs preact_msgs)
 target_link_libraries(tof_sensor tofcore)
+# rosidl_target_interfaces(tof_sensor
+#   ${PROJECT_NAME} "rosidl_typesupport_cpp")
 
 install(TARGETS tof_sensor
   DESTINATION lib/${PROJECT_NAME})

@@ -16,6 +16,7 @@
 #include <sensor_msgs/msg/image.hpp>
 #include <sensor_msgs/point_cloud2_iterator.hpp>
 #include <sensor_msgs/msg/temperature.hpp>
+#include <preact_msgs/msg/mojave_point_cloud2.hpp>
 
 
 /// ToFSensor ROS2 node class for interacting with a PreAct ToF sensor/camera
@@ -25,7 +26,7 @@ class ToFSensor : public rclcpp::Node
     rclcpp::Publisher<sensor_msgs::msg::Image>::SharedPtr pub_ambient_;
     rclcpp::Publisher<sensor_msgs::msg::Image>::SharedPtr pub_distance_;
     rclcpp::Publisher<sensor_msgs::msg::Image>::SharedPtr pub_amplitude_;
-    rclcpp::Publisher<sensor_msgs::msg::PointCloud2>::SharedPtr pub_pcd_;
+    rclcpp::Publisher<preact_msgs::msg::MojavePointCloud2>::SharedPtr pub_pcd_;
     std::array<rclcpp::Publisher<sensor_msgs::msg::Image>::SharedPtr, 4> pub_dcs_;
     rclcpp::Publisher<sensor_msgs::msg::Temperature>::SharedPtr sensor_temperature_tl;
     rclcpp::Publisher<sensor_msgs::msg::Temperature>::SharedPtr sensor_temperature_tr;
@@ -58,7 +59,7 @@ class ToFSensor : public rclcpp::Node
     void publish_distData(const tofcore::Measurement_T& frame, rclcpp::Publisher<sensor_msgs::msg::Image>& pub, const rclcpp::Time& stamp);
 
     /// Publish a PointCloud using distance data in frame to the topic publisher pub with timestamp stamp.
-    void publish_pointCloud(const tofcore::Measurement_T& frame, rclcpp::Publisher<sensor_msgs::msg::PointCloud2>& pub, const rclcpp::Time& stamp);
+    void publish_pointCloud(const tofcore::Measurement_T& frame, rclcpp::Publisher<preact_msgs::msg::MojavePointCloud2>& pub, const rclcpp::Time& stamp);
     
     /// Publish a dcs data in frame to the four dcs topic publishers with timestamp stamp.
     void publish_DCSData(const tofcore::Measurement_T &frame, const rclcpp::Time& stamp);

@@ -17,6 +17,7 @@
 #include <sensor_msgs/image_encodings.hpp>
 #include <sensor_msgs/msg/temperature.hpp>
 
+
 using namespace std::chrono_literals;
 using namespace std::string_literals;
 
@@ -69,7 +70,7 @@ ToFSensor::ToFSensor()
   pub_ambient_ = this->create_publisher<sensor_msgs::msg::Image>("ambient", pub_qos);
   pub_distance_ = this->create_publisher<sensor_msgs::msg::Image>("depth", pub_qos);//renamed this from distance to depth to match truesense node
   pub_amplitude_ = this->create_publisher<sensor_msgs::msg::Image>("amplitude", pub_qos);
-  pub_pcd_ = this->create_publisher<sensor_msgs::msg::PointCloud2>("points", pub_qos);
+  pub_pcd_ = this->create_publisher<preact_msgs::msg::MojavePointCloud2>("points", pub_qos);
 
   for(size_t i = 0; i != pub_dcs_.size(); i++) {
     std::string topic {"dcs"};
@@ -110,7 +111,11 @@ ToFSensor::ToFSensor()
 
   //Configurable params
   this->declare_parameter(CAPTURE_MODE, "distance_amplitude");
-  this->declare_parameter(INTEGRATION_TIME, 500);
+  //TODO: Do I need to do this?
+  if(interface_->getIntegrationTimes())
+    this->declare_parameter(INTEGRATION_TIME, std::move(*interface_->getIntegrationTimes()).at(0));
+  else
+    this->declare_parameter(INTEGRATION_TIME, 500);
   this->declare_parameter(STREAMING_STATE, true);
   this->declare_parameter(MODULATION_FREQUENCY, "12");
   this->declare_parameter(DISTANCE_OFFSET, 0);
@@ -118,6 +123,8 @@ ToFSensor::ToFSensor()
   this->declare_parameter(FLIP_HORIZONTAL, false);
   this->declare_parameter(FLIP_VERITCAL, false);
   this->declare_parameter(BINNING, false);
+
+ 
 
   // Setup a callback so that we can react to parameter changes from the outside world.
   parameters_callback_handle_ = this->add_on_set_parameters_callback(
@@ -489,15 +496,24 @@ void ToFSensor::publish_distData(const tofcore::Measurement_T &frame, rclcpp::Pu
   pub.publish(img);
 }
 
-void ToFSensor::publish_pointCloud(const tofcore::Measurement_T &frame, rclcpp::Publisher<sensor_msgs::msg::PointCloud2> &pub, const rclcpp::Time& stamp)
+void ToFSensor::publish_pointCloud(const tofcore::Measurement_T &frame, rclcpp::Publisher<preact_msgs::msg::MojavePointCloud2> &pub, const rclcpp::Time& stamp)
 {
-  sensor_msgs::msg::PointCloud2 cloud_msg{};
+  preact_msgs::msg::MojavePointCloud2 cloud_msg{};
   cloud_msg.header.stamp = stamp;
   cloud_msg.header.frame_id = "base_link";
-  cloud_msg.is_dense = true;
-  cloud_msg.is_bigendian = false;
+  cloud_msg.point_cloud.is_dense = true;
+  cloud_msg.point_cloud.is_bigendian = false;
 
-  sensor_msgs::PointCloud2Modifier modifier(cloud_msg);
+  //Adding this to the message for the auto exposure node
+  //Need to check if it exists because this is optional value
+  if (frame.integration_times())
+  {
+    auto integration_times=*std::move(frame.integration_times());
+    cloud_msg.integration_time=integration_times.at(0);
+    std::cout <<"integration time: "<< cloud_msg.integration_time<<std::endl;
+  }
+
+  sensor_msgs::PointCloud2Modifier modifier(cloud_msg.point_cloud);
   modifier.resize(frame.height() * frame.width());
   modifier.setPointCloud2Fields(
       7,
@@ -511,17 +527,17 @@ void ToFSensor::publish_pointCloud(const tofcore::Measurement_T &frame, rclcpp::
 
   // Note: For some reason setPointCloudFields doesn't set row_step
   //      and resets msg height and m_width so setup them here.
-  cloud_msg.height = static_cast<uint32_t>(frame.height());
-  cloud_msg.width = static_cast<uint32_t>(frame.width());
-  cloud_msg.row_step = frame.width() * 19; // 19 is the size in bytes of all the point cloud fields
+  cloud_msg.point_cloud.height = static_cast<uint32_t>(frame.height());
+  cloud_msg.point_cloud.width = static_cast<uint32_t>(frame.width());
+  cloud_msg.point_cloud.row_step = frame.width() * 19; // 19 is the size in bytes of all the point cloud fields
 
-  sensor_msgs::PointCloud2Iterator<float> it_x{cloud_msg, "x"};
-  sensor_msgs::PointCloud2Iterator<float> it_y{cloud_msg, "y"};
-  sensor_msgs::PointCloud2Iterator<float> it_z{cloud_msg, "z"};
-  sensor_msgs::PointCloud2Iterator<uint16_t> it_amplitude{cloud_msg, "amplitude"};
-  sensor_msgs::PointCloud2Iterator<int16_t> it_ambient{cloud_msg, "ambient"};
-  sensor_msgs::PointCloud2Iterator<uint8_t> it_valid{cloud_msg, "valid"};
-  sensor_msgs::PointCloud2Iterator<uint16_t> it_phase{cloud_msg, "distance"};
+  sensor_msgs::PointCloud2Iterator<float> it_x{cloud_msg.point_cloud, "x"};
+  sensor_msgs::PointCloud2Iterator<float> it_y{cloud_msg.point_cloud, "y"};
+  sensor_msgs::PointCloud2Iterator<float> it_z{cloud_msg.point_cloud, "z"};
+  sensor_msgs::PointCloud2Iterator<uint16_t> it_amplitude{cloud_msg.point_cloud, "amplitude"};
+  sensor_msgs::PointCloud2Iterator<int16_t> it_ambient{cloud_msg.point_cloud, "ambient"};
+  sensor_msgs::PointCloud2Iterator<uint8_t> it_valid{cloud_msg.point_cloud, "valid"};
+  sensor_msgs::PointCloud2Iterator<uint16_t> it_phase{cloud_msg.point_cloud, "distance"};
 
   auto it_d = frame.distance().begin();
   auto it_a = frame.amplitude().begin();
