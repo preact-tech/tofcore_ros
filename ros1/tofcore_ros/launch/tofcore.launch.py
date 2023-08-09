@@ -2,12 +2,11 @@ import launch
 from launch.substitutions import Command, LaunchConfiguration
 from launch_ros.actions import Node
 from launch_ros.substitutions import FindPackageShare
-from launch.actions import Shutdown, DeclareLaunchArgument
+from launch.actions import Shutdown, DeclareLaunchArgument, OpaqueFunction
 import os
 
-def generate_launch_description():
-    pkg_share = FindPackageShare(package='tofcore').find('tofcore')
-    default_rviz_config_path = os.path.join(pkg_share, 'rviz2/tofcore_basic_cloud.rviz')
+
+def launch_setup(context, *args, **kwargs):
 
     ts_camera = Node(
         package="tofcore",
@@ -35,15 +34,39 @@ def generate_launch_description():
         on_exit=Shutdown()
     )
 
+
+
+    retval = [ ts_camera,  rviz, rqt_node]
+
+    if LaunchConfiguration('with_ros1_bridge').perform(context).lower() == 'true':
+        retval.append( Node(
+            package='ros1_bridge', 
+            executable='dynamic_bridge',
+            arguments=['--bridge-all-2to1-topics'],
+            output="screen",
+            on_exit=Shutdown()
+        ))
+
+
+    return retval
+
+def generate_launch_description():
+    pkg_share = FindPackageShare(package='tofcore').find('tofcore')
+    default_rviz_config_path = os.path.join(pkg_share, 'rviz2/tofcore_basic_cloud.rviz')
+
     rvizconfig = DeclareLaunchArgument(
         name='rvizconfig',
         default_value=default_rviz_config_path,
         description='Absolute path to rviz config file')
 
+  
+    with_ros1_bridge = DeclareLaunchArgument(name='with_ros1_bridge', default_value='false',
+                              description='Launch a ROS1 to ROS2 bridge with other nodes')
+
+
+
     return launch.LaunchDescription([
         rvizconfig,
-#        static_transform,
-        ts_camera,
-        rviz,
-        rqt_node
+        with_ros1_bridge,
+        OpaqueFunction(function=launch_setup)
     ])

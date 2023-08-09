@@ -3,3 +3,7 @@ repositories:
     type: git
     url: git@bitbucket.org:preact-tech/libtofcore
     version: develop
+ros2_shared:
+    type: git
+    url: https://github.com/ptrmu/ros2_shared.git
+    version: 02433ef

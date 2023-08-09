@@ -71,7 +71,7 @@ ToFSensor::ToFSensor()
   pub_distance_ = this->create_publisher<sensor_msgs::msg::Image>("depth", pub_qos);//renamed this from distance to depth to match truesense node
   pub_amplitude_ = this->create_publisher<sensor_msgs::msg::Image>("amplitude", pub_qos);
   pub_pcd_ = this->create_publisher<sensor_msgs::msg::PointCloud2>("points", pub_qos);
-  pub_cust_pcd_ = this->create_publisher<preact_msgs::msg::MojavePointCloud2>("cust_points", pub_qos);
+  pub_cust_pcd_ = this->create_publisher<tofcore_msgs::msg::TofcorePointCloud2>("cust_points", pub_qos);
 
   for(size_t i = 0; i != pub_dcs_.size(); i++) {
     std::string topic {"dcs"};
@@ -113,9 +113,9 @@ ToFSensor::ToFSensor()
   //Configurable params
   this->declare_parameter(CAPTURE_MODE, "distance_amplitude");
   //TODO: Do I need to do this?
-  if(interface_->getIntegrationTimes())
-    this->declare_parameter(INTEGRATION_TIME, interface_->getIntegrationTimes()->at(0));
-  else
+  // if(interface_->getIntegrationTimes())
+  //   this->declare_parameter(INTEGRATION_TIME, interface_->getIntegrationTimes()->at(0));
+  // else
     this->declare_parameter(INTEGRATION_TIME, 500);
   this->declare_parameter(STREAMING_STATE, true);
   this->declare_parameter(MODULATION_FREQUENCY, "12");
@@ -497,9 +497,9 @@ void ToFSensor::publish_distData(const tofcore::Measurement_T &frame, rclcpp::Pu
   pub.publish(img);
 }
 
-void ToFSensor::publish_pointCloud(const tofcore::Measurement_T &frame, rclcpp::Publisher<sensor_msgs::msg::PointCloud2> &pub,rclcpp::Publisher<preact_msgs::msg::MojavePointCloud2> &cust_pub, const rclcpp::Time& stamp)
+void ToFSensor::publish_pointCloud(const tofcore::Measurement_T &frame, rclcpp::Publisher<sensor_msgs::msg::PointCloud2> &pub,rclcpp::Publisher<tofcore_msgs::msg::TofcorePointCloud2> &cust_pub, const rclcpp::Time& stamp)
 {
-  preact_msgs::msg::MojavePointCloud2 cloud_msg{};
+  tofcore_msgs::msg::TofcorePointCloud2 cloud_msg{};
   cloud_msg.header.stamp = stamp;
   cloud_msg.header.frame_id = "base_link";
   cloud_msg.point_cloud.header.stamp = stamp;

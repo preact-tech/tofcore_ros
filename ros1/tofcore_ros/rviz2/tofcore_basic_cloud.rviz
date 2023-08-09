@@ -75,7 +75,7 @@ Visualization Manager:
         Depth: 5
         Durability Policy: Volatile
         History Policy: Keep Last
-        Reliability Policy: Best Effort
+        Reliability Policy: Reliable
         Value: /tofcore/points
       Use Fixed Frame: true
       Use rainbow: true
