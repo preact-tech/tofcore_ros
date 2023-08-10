@@ -113,7 +113,6 @@ ToFSensor::ToFSensor()
 
   //Configurable params
   this->declare_parameter(CAPTURE_MODE, "distance_amplitude");
-  this->declare_parameter(INTEGRATION_TIME, 500);
   this->declare_parameter(STREAMING_STATE, true);
   this->declare_parameter(MODULATION_FREQUENCY, "12");
   this->declare_parameter(DISTANCE_OFFSET, 0);
