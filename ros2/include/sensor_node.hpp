@@ -34,6 +34,7 @@ class ToFSensor : public rclcpp::Node
 
     std::unique_ptr<tofcore::Sensor> interface_;
     tofcore::CartesianTransform cartesianTransform_;
+    std::string sensor_location_;
 
   public:
     /// Standard constructor
@@ -75,6 +76,11 @@ class ToFSensor : public rclcpp::Node
     void apply_modulation_frequency_param(const rclcpp::Parameter& parameter, rcl_interfaces::msg::SetParametersResult& result);
     void apply_distance_offset_param(const rclcpp::Parameter& parameter, rcl_interfaces::msg::SetParametersResult& result);
     void apply_minimum_amplitude_param(const rclcpp::Parameter& parameter, rcl_interfaces::msg::SetParametersResult& result);
+    void apply_flip_horizontal_param(const rclcpp::Parameter& parameter, rcl_interfaces::msg::SetParametersResult& result);
+    void apply_flip_vertical_param(const rclcpp::Parameter& parameter, rcl_interfaces::msg::SetParametersResult& result);
+    void apply_binning_param(const rclcpp::Parameter& parameter, rcl_interfaces::msg::SetParametersResult& result);
+    void apply_sensor_name_param(const rclcpp::Parameter& parameter, rcl_interfaces::msg::SetParametersResult& result);
+    void apply_sensor_location_param(const rclcpp::Parameter& parameter, rcl_interfaces::msg::SetParametersResult& result);
 
 };
 

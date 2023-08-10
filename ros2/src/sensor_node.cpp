@@ -20,6 +20,7 @@
 using namespace std::chrono_literals;
 using namespace std::string_literals;
 
+
 constexpr double SENSOR_PIXEL_SIZE_MM = 0.02; // camera sensor pixel size 20x20 um
 constexpr int m_width = 320;
 constexpr int HEIGHT = 240;
@@ -28,16 +29,30 @@ constexpr int LENS_CENTER_OFFSET_Y = 0;
 constexpr int32_t MIN_INTEGRATION_TIME = 0;
 constexpr int32_t MAX_INTEGRATION_TIME = 4000;
 
-constexpr auto PARAM_STREAM_TYPE = "stream_type";
-constexpr auto PARAM_INTEGRATION_TIME0 = "integration_time0";
-constexpr auto PARAM_INTEGRATION_TIME1 = "integration_time1";
-constexpr auto PARAM_INTEGRATION_TIME2 = "integration_time2";
-constexpr auto PARAM_HDR_MODE = "hdr_mode";
-constexpr auto PARAM_STREAMING = "streaming";
-constexpr auto PARAM_LENS_TYPE = "lens_type";
-constexpr auto PARAM_MODULATION_FREQ = "modulation_frequency";
-constexpr auto PARAM_DISTANCE_OFFSET = "distance_offset";
-constexpr auto PARAM_MINIMUM_AMPLITUDE = "minimum_amplitude";
+
+//Read Only params
+constexpr auto API_VERSION  = "api_version";
+constexpr auto CHIP_ID  = "chip_id";
+constexpr auto MODEL_NAME  = "model_name";
+constexpr auto SW_VERSION = "sw_version";
+constexpr auto SENSOR_URL  = "sensor_url"; 
+
+
+
+//Configurable params
+constexpr auto CAPTURE_MODE = "capture_mode";
+constexpr auto INTEGRATION_TIME = "integration_time";
+constexpr auto STREAMING_STATE = "streaming";
+constexpr auto MODULATION_FREQUENCY = "modulation_frequency";
+constexpr auto DISTANCE_OFFSET = "distance_offset";
+constexpr auto MINIMUM_AMPLITUDE = "minimum_amplitude";
+constexpr auto FLIP_HORIZONTAL= "flip_hotizontal";
+constexpr auto FLIP_VERITCAL = "flip_vertical";
+constexpr auto BINNING  = "binning"; 
+constexpr auto SENSOR_NAME  = "sensor_name";
+constexpr auto SENSOR_LOCATION  = "sensor_location";
+constexpr auto DISCOVERY_FILTER  = "discovery_filter"; //TODO: Implement this
+
 
 /// Quick helper function that return true if the string haystack starts with the string needle
 bool begins_with(const std::string& needle, const std::string& haystack )
@@ -55,7 +70,7 @@ ToFSensor::ToFSensor()
 
   // Setup topic pulbishers
   pub_ambient_ = this->create_publisher<sensor_msgs::msg::Image>("ambient", pub_qos);
-  pub_distance_ = this->create_publisher<sensor_msgs::msg::Image>("distance", pub_qos);
+  pub_distance_ = this->create_publisher<sensor_msgs::msg::Image>("depth", pub_qos);//renamed this from distance to depth to match truesense node
   pub_amplitude_ = this->create_publisher<sensor_msgs::msg::Image>("amplitude", pub_qos);
   pub_pcd_ = this->create_publisher<sensor_msgs::msg::PointCloud2>("points", pub_qos);
 
@@ -74,17 +89,63 @@ ToFSensor::ToFSensor()
   (void)interface_->subscribeMeasurement([&](std::shared_ptr<tofcore::Measurement_T> f) -> void
                                          { updateFrame(*f); });
 
+
+  //Get sensor info
+  TofComm::versionData_t versionData { };
+  interface_->getSensorInfo(versionData);
+
+  //use generic lens transform always
+  std::vector<double> rays_x, rays_y, rays_z;
+  interface_->getLensInfo(rays_x, rays_y, rays_z);
+  cartesianTransform_.initLensTransform(m_width, HEIGHT, rays_x, rays_y, rays_z);
+  
   // Setup ROS parameters
-  this->declare_parameter(PARAM_STREAM_TYPE, "distance_amplitude");
-  this->declare_parameter(PARAM_INTEGRATION_TIME0, 100);
-  this->declare_parameter(PARAM_INTEGRATION_TIME1, 0);
-  this->declare_parameter(PARAM_INTEGRATION_TIME2, 0);
-  this->declare_parameter(PARAM_HDR_MODE, "off");
-  this->declare_parameter(PARAM_STREAMING, true);
-  this->declare_parameter(PARAM_LENS_TYPE, "r");
-  this->declare_parameter(PARAM_MODULATION_FREQ, "12");
-  this->declare_parameter(PARAM_DISTANCE_OFFSET, 0);
-  this->declare_parameter(PARAM_MINIMUM_AMPLITUDE, 0);
+  rcl_interfaces::msg::ParameterDescriptor readonly_descriptor;
+  readonly_descriptor.read_only = true;
+
+  //Read Only params
+  this->declare_parameter(API_VERSION, versionData.m_softwareSourceID,readonly_descriptor);// TODO: Update this when API version is availible
+  this->declare_parameter(CHIP_ID, std::to_string(versionData.m_sensorChipId),readonly_descriptor);
+  this->declare_parameter(MODEL_NAME, versionData.m_modelName,readonly_descriptor);
+  this->declare_parameter(SW_VERSION, versionData.m_softwareVersion,readonly_descriptor);
+  this->declare_parameter(SENSOR_URL,  "/dev/ttyACM0",readonly_descriptor); 
+  
+
+  //Configurable params
+  this->declare_parameter(CAPTURE_MODE, "distance_amplitude");
+  this->declare_parameter(STREAMING_STATE, true);
+  this->declare_parameter(MODULATION_FREQUENCY, "12");
+  this->declare_parameter(DISTANCE_OFFSET, 0);
+  this->declare_parameter(MINIMUM_AMPLITUDE, 0);
+  this->declare_parameter(FLIP_HORIZONTAL, false);
+  this->declare_parameter(FLIP_VERITCAL, false);
+  this->declare_parameter(BINNING, false);
+
+  //Reading optional values from sensor
+  std::optional<std::string> init_name = interface_->getSensorName();
+  std::optional<std::string>  init_location = interface_->getSensorLocation();
+  std::optional<std::vector<short unsigned int> >  init_integration = interface_->getIntegrationTimes();
+
+  if(init_name)
+    this->declare_parameter(SENSOR_NAME, *init_name);
+  else
+    this->declare_parameter(SENSOR_NAME, "Mojave");
+
+  if(init_location)
+  {
+    this->declare_parameter(SENSOR_LOCATION, *init_location);
+    this->sensor_location_=*init_location;
+  }
+  else
+  {
+    this->declare_parameter(SENSOR_LOCATION, "unknown");
+    this->sensor_location_="unknown";
+  }
+
+  if(init_integration)
+    this->declare_parameter(INTEGRATION_TIME, (*init_integration).at(0));
+  else
+    this->declare_parameter(INTEGRATION_TIME, 500);
 
   // Setup a callback so that we can react to parameter changes from the outside world.
   parameters_callback_handle_ = this->add_on_set_parameters_callback(
@@ -105,43 +166,56 @@ rcl_interfaces::msg::SetParametersResult ToFSensor::on_set_parameters_callback(
 
   for (const auto &parameter : parameters)
   {
-    auto param_name = parameter.get_name();
-    if (param_name == PARAM_STREAM_TYPE)
+    auto name = parameter.get_name();
+    if (name == CAPTURE_MODE)
     {
       bool streaming = true;
-      this->get_parameter(PARAM_STREAMING, streaming);
+      this->get_parameter(STREAMING_STATE, streaming);
       if (streaming)
       {
         this->apply_stream_type_param(parameter, result);
       }
     }
-    else if (begins_with("integration_time", param_name))
+    else if (begins_with("integration_time", name))
     {
       this->apply_integration_time_param(parameter, result);
     }
-    else if( param_name == PARAM_HDR_MODE)
-    {
-      this->apply_hdr_mode_param(parameter, result);
-    }
-    else if( param_name == PARAM_STREAMING)
+    else if( name == STREAMING_STATE)
     {
       this->apply_streaming_param(parameter, result);
     }
-    else if( param_name == PARAM_LENS_TYPE)
-    {
-      this->apply_lens_type_param(parameter, result);
-    }
-    else if( param_name == PARAM_MODULATION_FREQ)
+    else if( name == MODULATION_FREQUENCY)
     {
       this->apply_modulation_frequency_param(parameter, result);
     }
-    else if( param_name == PARAM_DISTANCE_OFFSET)
+    else if( name == DISTANCE_OFFSET)
     {
       this->apply_distance_offset_param(parameter, result);
     }
-    else if( param_name == PARAM_MINIMUM_AMPLITUDE)
+    else if( name == MINIMUM_AMPLITUDE)
     {
       this->apply_minimum_amplitude_param(parameter, result);
+    }
+    else if( name == FLIP_HORIZONTAL)
+    {
+      this->apply_flip_horizontal_param(parameter, result);
+
+    }
+    else if( name == FLIP_VERITCAL)
+    {
+      this->apply_flip_vertical_param(parameter, result);
+    }
+    else if( name == BINNING)
+    {
+      this->apply_binning_param(parameter, result);
+    }
+    else if( name == SENSOR_NAME)
+    {
+      this->apply_sensor_name_param(parameter, result);
+    }
+    else if( name == SENSOR_LOCATION)
+    {
+      this->apply_sensor_location_param(parameter, result);
     }
   }
   return result;
@@ -188,11 +262,7 @@ void ToFSensor::apply_integration_time_param(const rclcpp::Parameter& parameter,
   }
   else
   {
-    uint16_t int_times[3] = {0};
-    int_times[0] = (parameter.get_name() == PARAM_INTEGRATION_TIME0) ? value : get_parameter(PARAM_INTEGRATION_TIME0).as_int();
-    int_times[1] = (parameter.get_name() == PARAM_INTEGRATION_TIME1) ? value : get_parameter(PARAM_INTEGRATION_TIME1).as_int();
-    int_times[2] = (parameter.get_name() == PARAM_INTEGRATION_TIME2) ? value : get_parameter(PARAM_INTEGRATION_TIME1).as_int();
-    interface_->setIntegrationTimes(int_times[0], int_times[1], int_times[2]);
+    interface_->setIntegrationTime(value);
   }
 }
 
@@ -262,14 +332,14 @@ void ToFSensor::apply_modulation_frequency_param(const rclcpp::Parameter& parame
 }
 
 void ToFSensor::apply_streaming_param(const rclcpp::Parameter& parameter, rcl_interfaces::msg::SetParametersResult& result)
-{
+{      rcl_interfaces::msg::SetParametersResult dummy_result;
+
   try {
     auto value = parameter.as_bool();
     RCLCPP_INFO(this->get_logger(), "Handling parameter \"%s\" : %s", parameter.get_name().c_str(), (value ?"true":"false"));
     if(value) {
       rclcpp::Parameter stream_type;
-      rcl_interfaces::msg::SetParametersResult dummy_result;
-      (void)this->get_parameter(PARAM_STREAM_TYPE, stream_type);
+      (void)this->get_parameter(CAPTURE_MODE, stream_type);
       this->apply_stream_type_param(stream_type, dummy_result);
     } else {
       interface_->stopStream();
@@ -330,7 +400,63 @@ void ToFSensor::apply_minimum_amplitude_param(const rclcpp::Parameter& parameter
 
   interface_->setMinAmplitude(value);
 }
+void ToFSensor::apply_flip_horizontal_param(const rclcpp::Parameter& parameter, rcl_interfaces::msg::SetParametersResult&)
+{
+  auto value = parameter.as_bool();
+  RCLCPP_INFO(this->get_logger(), "Handling parameter \"%s\" : %s", parameter.get_name().c_str(), (value ?"true":"false"));
+  //TODO:  It seems we need to stop and restart streaming to change these params
+  interface_->stopStream();
+  interface_->setFlipHorizontally(value);
+  rclcpp::Parameter stream_type;
+  rclcpp::Parameter is_streaming;
+  rcl_interfaces::msg::SetParametersResult dummy_result;
+  (void)this->get_parameter(STREAMING_STATE, is_streaming);
+  (void)this->get_parameter(CAPTURE_MODE, stream_type);
+  if(is_streaming.as_bool())
+    this->apply_stream_type_param(stream_type, dummy_result);
+}
+void ToFSensor::apply_flip_vertical_param(const rclcpp::Parameter& parameter, rcl_interfaces::msg::SetParametersResult&)
+{
+  auto value = parameter.as_bool();
+  RCLCPP_INFO(this->get_logger(), "Handling parameter \"%s\" : %s", parameter.get_name().c_str(), (value ?"true":"false"));
+  //TODO: It seems we need to stop and restart streaming to change these params
+  interface_->stopStream();
+  interface_->setFlipVertically(value);
+  rclcpp::Parameter stream_type;
+  rclcpp::Parameter is_streaming;
+  rcl_interfaces::msg::SetParametersResult dummy_result;
+  (void)this->get_parameter(STREAMING_STATE, is_streaming);
+  (void)this->get_parameter(CAPTURE_MODE, stream_type);
+  if(is_streaming.as_bool())
+    this->apply_stream_type_param(stream_type, dummy_result);
+}
+void ToFSensor::apply_binning_param(const rclcpp::Parameter& parameter, rcl_interfaces::msg::SetParametersResult&)
+{
+  auto value = parameter.as_bool();
+  RCLCPP_INFO(this->get_logger(), "Handling parameter \"%s\" : %s", parameter.get_name().c_str(), (value ?"true":"false"));
 
+  interface_->setBinning(value,value);
+
+}
+void ToFSensor::apply_sensor_name_param(const rclcpp::Parameter& parameter, rcl_interfaces::msg::SetParametersResult& )
+{
+  auto value = parameter.as_string();
+  RCLCPP_INFO(this->get_logger(), "Handling parameter \"%s\" : %s", parameter.get_name().c_str(), value.c_str() );
+
+  interface_->setSensorName(value);
+  interface_->storeSettings();
+
+}
+void ToFSensor::apply_sensor_location_param(const rclcpp::Parameter& parameter, rcl_interfaces::msg::SetParametersResult& )
+{
+  auto value = parameter.as_string();
+  RCLCPP_INFO(this->get_logger(), "Handling parameter \"%s\" : %s", parameter.get_name().c_str(), value.c_str() );
+
+  interface_->setSensorLocation(value);
+  interface_->storeSettings();
+  this->sensor_location_=value;
+
+}
 void ToFSensor::publish_tempData(const tofcore::Measurement_T &frame, const rclcpp::Time& stamp)
 {
   const std::array<float, 4> defaultTemps {0.0,0.0,0.0,0.0};
@@ -340,7 +466,7 @@ void ToFSensor::publish_tempData(const tofcore::Measurement_T &frame, const rclc
   for(const auto& i : temperatures) {
     sensor_msgs::msg::Temperature tmp;
     tmp.header.stamp = stamp;
-    tmp.header.frame_id = "base_link";
+    tmp.header.frame_id = this->sensor_location_;
     tmp.temperature = i;
     tmp.variance = 0;
     switch (count) {
@@ -373,7 +499,7 @@ void ToFSensor::publish_amplData(const tofcore::Measurement_T &frame, rclcpp::Pu
 {
   sensor_msgs::msg::Image img;
   img.header.stamp = stamp;
-  img.header.frame_id = "base_link";
+  img.header.frame_id = this->sensor_location_;
   img.height = static_cast<uint32_t>(frame.height());
   img.width = static_cast<uint32_t>(frame.width());
   img.encoding = sensor_msgs::image_encodings::MONO16;
@@ -384,13 +510,14 @@ void ToFSensor::publish_amplData(const tofcore::Measurement_T &frame, rclcpp::Pu
   uint8_t* amplitude_begin = (uint8_t*)amplitude_bv.data();
   std::copy_n(amplitude_begin, img.data.size(), img.data.begin());
   pub.publish(img);
+
 }
 
 void ToFSensor::publish_ambientData(const tofcore::Measurement_T &frame, rclcpp::Publisher<sensor_msgs::msg::Image> &pub, const rclcpp::Time& stamp)
 {
   sensor_msgs::msg::Image img;
   img.header.stamp = stamp;
-  img.header.frame_id = "base_link";
+  img.header.frame_id = this->sensor_location_;
   img.height = static_cast<uint32_t>(frame.height());
   img.width = static_cast<uint32_t>(frame.width());
   img.encoding = sensor_msgs::image_encodings::MONO16;
@@ -407,7 +534,7 @@ void ToFSensor::publish_distData(const tofcore::Measurement_T &frame, rclcpp::Pu
 {
   sensor_msgs::msg::Image img;
   img.header.stamp = stamp;
-  img.header.frame_id = "base_link";
+  img.header.frame_id = this->sensor_location_;
   img.height = static_cast<uint32_t>(frame.height());
   img.width = static_cast<uint32_t>(frame.width());
   img.encoding = sensor_msgs::image_encodings::MONO16;
@@ -424,10 +551,9 @@ void ToFSensor::publish_pointCloud(const tofcore::Measurement_T &frame, rclcpp::
 {
   sensor_msgs::msg::PointCloud2 cloud_msg{};
   cloud_msg.header.stamp = stamp;
-  cloud_msg.header.frame_id = "base_link";
+  cloud_msg.header.frame_id = this->sensor_location_;
   cloud_msg.is_dense = true;
   cloud_msg.is_bigendian = false;
-
   sensor_msgs::PointCloud2Modifier modifier(cloud_msg);
   modifier.resize(frame.height() * frame.width());
   modifier.setPointCloud2Fields(
@@ -515,12 +641,14 @@ void ToFSensor::publish_DCSData(const tofcore::Measurement_T &frame, const rclcp
   //  chip_id
   //
   // Also need to figure out how to publish an ambient frame which will be required for use with the calibration app.
+  //
+  //Does feature/add-meta-data-publishers branch have work that should be used for this?
 
   if(frame.type() == tofcore::Measurement_T::DataType::DCS) {
     for(auto i = 0; i != 4; ++i) {
       sensor_msgs::msg::Image img;
       img.header.stamp = stamp;
-      img.header.frame_id = "base_link";
+      img.header.frame_id = this->sensor_location_;
       img.height = static_cast<uint32_t>(frame.height());
       // RCLCPP_INFO(this->get_logger(), "Frame Height: %d", frame.height());
 
