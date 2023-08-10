@@ -125,6 +125,7 @@ ToFSensor::ToFSensor()
   //Reading optional values from sensor
   std::optional<std::string> init_name = interface_->getSensorName();
   std::optional<std::string>  init_location = interface_->getSensorLocation();
+  std::optional<std::vector<short unsigned int> >  init_integration = interface_->getIntegrationTimes();
 
   if(init_name)
     this->declare_parameter(SENSOR_NAME, *init_name);
@@ -141,6 +142,11 @@ ToFSensor::ToFSensor()
     this->declare_parameter(SENSOR_LOCATION, "Top");
     this->sensor_location_="Top";
   }
+
+  if(init_integration)
+    this->declare_parameter(INTEGRATION_TIME, (*init_integration).at(0));
+  else
+    this->declare_parameter(INTEGRATION_TIME, 500);
 
   // Setup a callback so that we can react to parameter changes from the outside world.
   parameters_callback_handle_ = this->add_on_set_parameters_callback(
