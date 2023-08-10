@@ -75,7 +75,7 @@ Visualization Manager:
         Depth: 5
         Durability Policy: Volatile
         History Policy: Keep Last
-        Reliability Policy: Best Effort
+        Reliability Policy: Reliable
         Value: /tofcore/points
       Use Fixed Frame: true
       Use rainbow: true
@@ -125,7 +125,7 @@ Visualization Manager:
   Enabled: true
   Global Options:
     Background Color: 48; 48; 48
-    Fixed Frame: base_link
+    Fixed Frame: Top
     Frame Rate: 30
   Name: root
   Tools:

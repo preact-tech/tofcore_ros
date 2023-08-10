@@ -33,7 +33,7 @@ constexpr int32_t MAX_INTEGRATION_TIME = 4000;
 //Read Only params
 constexpr auto API_VERSION  = "api_version";
 constexpr auto CHIP_ID  = "chip_id";
-constexpr auto SENSOR_NAME  = "sensor_name";
+constexpr auto MODEL_NAME  = "model_name";
 constexpr auto SW_VERSION = "sw_version";
 constexpr auto SENSOR_URL  = "sensor_url"; 
 
@@ -49,6 +49,9 @@ constexpr auto MINIMUM_AMPLITUDE = "minimum_amplitude";
 constexpr auto FLIP_HORIZONTAL= "flip_hotizontal";
 constexpr auto FLIP_VERITCAL = "flip_vertical";
 constexpr auto BINNING  = "binning"; 
+constexpr auto SENSOR_NAME  = "sensor_name";
+constexpr auto SENSOR_LOCATION  = "sensor_location";
+constexpr auto DISCOVERY_FILTER  = "discovery_filter"; //TODO: Implement this
 
 
 /// Quick helper function that return true if the string haystack starts with the string needle
@@ -101,11 +104,11 @@ ToFSensor::ToFSensor()
   readonly_descriptor.read_only = true;
 
   //Read Only params
-  this->declare_parameter(API_VERSION, versionData.m_softwareSourceID,readonly_descriptor);// TODO: Is this the right param
+  this->declare_parameter(API_VERSION, versionData.m_softwareSourceID,readonly_descriptor);// TODO: Update this when API version is availible
   this->declare_parameter(CHIP_ID, std::to_string(versionData.m_sensorChipId),readonly_descriptor);
-  this->declare_parameter(SENSOR_NAME, versionData.m_modelName,readonly_descriptor);
+  this->declare_parameter(MODEL_NAME, versionData.m_modelName,readonly_descriptor);
   this->declare_parameter(SW_VERSION, versionData.m_softwareVersion,readonly_descriptor);
-  this->declare_parameter(SENSOR_URL,  "/dev/ttyACM0",readonly_descriptor); // TODO: How can I get this from sensor?
+  this->declare_parameter(SENSOR_URL,  "/dev/ttyACM0",readonly_descriptor); 
   
 
   //Configurable params
@@ -118,6 +121,26 @@ ToFSensor::ToFSensor()
   this->declare_parameter(FLIP_HORIZONTAL, false);
   this->declare_parameter(FLIP_VERITCAL, false);
   this->declare_parameter(BINNING, false);
+
+  //Reading optional values from sensor
+  std::optional<std::string> init_name = interface_->getSensorName();
+  std::optional<std::string>  init_location = interface_->getSensorLocation();
+
+  if(init_name)
+    this->declare_parameter(SENSOR_NAME, *init_name);
+  else
+    this->declare_parameter(SENSOR_NAME, "sensor_name1");
+
+  if(init_location)
+  {
+    this->declare_parameter(SENSOR_LOCATION, *init_location);
+    this->sensor_location_=*init_location;
+  }
+  else
+  {
+    this->declare_parameter(SENSOR_LOCATION, "Top");
+    this->sensor_location_="Top";
+  }
 
   // Setup a callback so that we can react to parameter changes from the outside world.
   parameters_callback_handle_ = this->add_on_set_parameters_callback(
@@ -177,9 +200,17 @@ rcl_interfaces::msg::SetParametersResult ToFSensor::on_set_parameters_callback(
     {
       this->apply_flip_vertical_param(parameter, result);
     }
-        else if( name == BINNING)
+    else if( name == BINNING)
     {
       this->apply_binning_param(parameter, result);
+    }
+    else if( name == SENSOR_NAME)
+    {
+      this->apply_sensor_name_param(parameter, result);
+    }
+    else if( name == SENSOR_LOCATION)
+    {
+      this->apply_sensor_location_param(parameter, result);
     }
   }
   return result;
@@ -226,9 +257,7 @@ void ToFSensor::apply_integration_time_param(const rclcpp::Parameter& parameter,
   }
   else
   {
-    uint16_t int_times = 0;
-    int_times = (parameter.get_name() == INTEGRATION_TIME) ? value : get_parameter(INTEGRATION_TIME).as_int();
-    interface_->setIntegrationTime(int_times);
+    interface_->setIntegrationTime(value);
   }
 }
 
@@ -298,13 +327,13 @@ void ToFSensor::apply_modulation_frequency_param(const rclcpp::Parameter& parame
 }
 
 void ToFSensor::apply_streaming_param(const rclcpp::Parameter& parameter, rcl_interfaces::msg::SetParametersResult& result)
-{
+{      rcl_interfaces::msg::SetParametersResult dummy_result;
+
   try {
     auto value = parameter.as_bool();
     RCLCPP_INFO(this->get_logger(), "Handling parameter \"%s\" : %s", parameter.get_name().c_str(), (value ?"true":"false"));
     if(value) {
       rclcpp::Parameter stream_type;
-      rcl_interfaces::msg::SetParametersResult dummy_result;
       (void)this->get_parameter(CAPTURE_MODE, stream_type);
       this->apply_stream_type_param(stream_type, dummy_result);
     } else {
@@ -374,9 +403,12 @@ void ToFSensor::apply_flip_horizontal_param(const rclcpp::Parameter& parameter, 
   interface_->stopStream();
   interface_->setFlipHorizontally(value);
   rclcpp::Parameter stream_type;
+  rclcpp::Parameter is_streaming;
   rcl_interfaces::msg::SetParametersResult dummy_result;
+  (void)this->get_parameter(STREAMING_STATE, is_streaming);
   (void)this->get_parameter(CAPTURE_MODE, stream_type);
-  this->apply_stream_type_param(stream_type, dummy_result);
+  if(is_streaming.as_bool())
+    this->apply_stream_type_param(stream_type, dummy_result);
 }
 void ToFSensor::apply_flip_vertical_param(const rclcpp::Parameter& parameter, rcl_interfaces::msg::SetParametersResult&)
 {
@@ -386,9 +418,12 @@ void ToFSensor::apply_flip_vertical_param(const rclcpp::Parameter& parameter, rc
   interface_->stopStream();
   interface_->setFlipVertically(value);
   rclcpp::Parameter stream_type;
+  rclcpp::Parameter is_streaming;
   rcl_interfaces::msg::SetParametersResult dummy_result;
+  (void)this->get_parameter(STREAMING_STATE, is_streaming);
   (void)this->get_parameter(CAPTURE_MODE, stream_type);
-  this->apply_stream_type_param(stream_type, dummy_result);
+  if(is_streaming.as_bool())
+    this->apply_stream_type_param(stream_type, dummy_result);
 }
 void ToFSensor::apply_binning_param(const rclcpp::Parameter& parameter, rcl_interfaces::msg::SetParametersResult&)
 {
@@ -396,6 +431,25 @@ void ToFSensor::apply_binning_param(const rclcpp::Parameter& parameter, rcl_inte
   RCLCPP_INFO(this->get_logger(), "Handling parameter \"%s\" : %s", parameter.get_name().c_str(), (value ?"true":"false"));
 
   interface_->setBinning(value,value);
+
+}
+void ToFSensor::apply_sensor_name_param(const rclcpp::Parameter& parameter, rcl_interfaces::msg::SetParametersResult& )
+{
+  auto value = parameter.as_string();
+  RCLCPP_INFO(this->get_logger(), "Handling parameter \"%s\" : %s", parameter.get_name().c_str(), value.c_str() );
+
+  interface_->setSensorName(value);
+  interface_->storeSettings();
+
+}
+void ToFSensor::apply_sensor_location_param(const rclcpp::Parameter& parameter, rcl_interfaces::msg::SetParametersResult& )
+{
+  auto value = parameter.as_string();
+  RCLCPP_INFO(this->get_logger(), "Handling parameter \"%s\" : %s", parameter.get_name().c_str(), value.c_str() );
+
+  interface_->setSensorLocation(value);
+  interface_->storeSettings();
+  this->sensor_location_=value;
 
 }
 void ToFSensor::publish_tempData(const tofcore::Measurement_T &frame, const rclcpp::Time& stamp)
@@ -407,7 +461,7 @@ void ToFSensor::publish_tempData(const tofcore::Measurement_T &frame, const rclc
   for(const auto& i : temperatures) {
     sensor_msgs::msg::Temperature tmp;
     tmp.header.stamp = stamp;
-    tmp.header.frame_id = "base_link";
+    tmp.header.frame_id = this->sensor_location_;
     tmp.temperature = i;
     tmp.variance = 0;
     switch (count) {
@@ -440,7 +494,7 @@ void ToFSensor::publish_amplData(const tofcore::Measurement_T &frame, rclcpp::Pu
 {
   sensor_msgs::msg::Image img;
   img.header.stamp = stamp;
-  img.header.frame_id = "base_link";
+  img.header.frame_id = this->sensor_location_;
   img.height = static_cast<uint32_t>(frame.height());
   img.width = static_cast<uint32_t>(frame.width());
   img.encoding = sensor_msgs::image_encodings::MONO16;
@@ -454,12 +508,11 @@ void ToFSensor::publish_amplData(const tofcore::Measurement_T &frame, rclcpp::Pu
 
 }
 
-//TODO: I thought we couldnt do ambient, or can we not do ambient and distance/amp at the same time? understand this?
 void ToFSensor::publish_ambientData(const tofcore::Measurement_T &frame, rclcpp::Publisher<sensor_msgs::msg::Image> &pub, const rclcpp::Time& stamp)
 {
   sensor_msgs::msg::Image img;
   img.header.stamp = stamp;
-  img.header.frame_id = "base_link";
+  img.header.frame_id = this->sensor_location_;
   img.height = static_cast<uint32_t>(frame.height());
   img.width = static_cast<uint32_t>(frame.width());
   img.encoding = sensor_msgs::image_encodings::MONO16;
@@ -476,7 +529,7 @@ void ToFSensor::publish_distData(const tofcore::Measurement_T &frame, rclcpp::Pu
 {
   sensor_msgs::msg::Image img;
   img.header.stamp = stamp;
-  img.header.frame_id = "base_link";
+  img.header.frame_id = this->sensor_location_;
   img.height = static_cast<uint32_t>(frame.height());
   img.width = static_cast<uint32_t>(frame.width());
   img.encoding = sensor_msgs::image_encodings::MONO16;
@@ -493,10 +546,9 @@ void ToFSensor::publish_pointCloud(const tofcore::Measurement_T &frame, rclcpp::
 {
   sensor_msgs::msg::PointCloud2 cloud_msg{};
   cloud_msg.header.stamp = stamp;
-  cloud_msg.header.frame_id = "base_link";
+  cloud_msg.header.frame_id = this->sensor_location_;
   cloud_msg.is_dense = true;
   cloud_msg.is_bigendian = false;
-
   sensor_msgs::PointCloud2Modifier modifier(cloud_msg);
   modifier.resize(frame.height() * frame.width());
   modifier.setPointCloud2Fields(
@@ -507,7 +559,7 @@ void ToFSensor::publish_pointCloud(const tofcore::Measurement_T &frame, rclcpp::
       "amplitude", 1, sensor_msgs::msg::PointField::UINT16,
       "ambient", 1, sensor_msgs::msg::PointField::INT16,
       "valid", 1, sensor_msgs::msg::PointField::UINT8,
-      "distance", 1, sensor_msgs::msg::PointField::UINT16); //TODO: do we need phase here?
+      "distance", 1, sensor_msgs::msg::PointField::UINT16);
 
   // Note: For some reason setPointCloudFields doesn't set row_step
   //      and resets msg height and m_width so setup them here.
@@ -591,7 +643,7 @@ void ToFSensor::publish_DCSData(const tofcore::Measurement_T &frame, const rclcp
     for(auto i = 0; i != 4; ++i) {
       sensor_msgs::msg::Image img;
       img.header.stamp = stamp;
-      img.header.frame_id = "base_link";
+      img.header.frame_id = this->sensor_location_;
       img.height = static_cast<uint32_t>(frame.height());
       // RCLCPP_INFO(this->get_logger(), "Frame Height: %d", frame.height());
 
