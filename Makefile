@@ -39,7 +39,8 @@ provision_bridge: provision ##	Install required tools, packages and git repos to
 provision_ros1: provision ##	Install required tools, packages and git repos to build the truenense package as well as the ROS bridge package
 	sudo sh -c 'echo "deb http://packages.ros.org/ros/ubuntu $(TARGET_DISTRO_VER) main" > /etc/apt/sources.list.d/ros-noetic.list'
 	curl -s https://raw.githubusercontent.com/ros/rosdistro/master/ros.asc | sudo apt-key add -
-	sudo apt update && sudo apt install -y ros-noetic-ros-base python3-catkin-pkg
+	sudo apt update && sudo apt install -y ros-noetic-desktop-full python3-catkin-pkg
+	
 
 tofcore_msgs_deb: ##	Build the tofcore_msgs ROS2 package as a debian package
 	rosdep update --include-eol-distros
@@ -61,7 +62,7 @@ build:
 
 .PHONY: ros1
 ros1:
-	 cd ros1 && colcon build 
+	 cd ros1 &&  source /opt/ros/noetic/setup.bash && colcon build 
 
 .PHONY: bridge
 bridge: build ##	Build the ROS1 bridge, build environment must have both ROS1 and ROS2 installed
@@ -70,7 +71,7 @@ bridge: build ##	Build the ROS1 bridge, build environment must have both ROS1 an
 
 .PHONY: clean
 clean:
-	rm -rf build install log ros2/build ros2/install ros2/log
+	rm -rf build install log ros2/build ros2/install ros2/log ros1/build ros1/install ros1/log
 	rm -r -f build
 	rm -r -f dist
 	rm -r -f install
