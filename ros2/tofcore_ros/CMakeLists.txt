@@ -17,13 +17,11 @@ find_package(tofcore_msgs REQUIRED)
 find_package(rosidl_typesupport_c REQUIRED)
 find_package(rosidl_typesupport_cpp REQUIRED)
 
-message( "ToFCore library adding pre")
 
 find_package(ToFCore)
 if(NOT TARGET ToFCore::ToFCore)
   if (EXISTS "${CMAKE_SOURCE_DIR}/libtofcore" AND EXISTS "${CMAKE_SOURCE_DIR}/libtofcore/CMakeLists.txt")
     set(BUILD_PYTHON_BINDINGS OFF)
-    message( "ToFCore library adding")
     add_subdirectory(libtofcore/tofcore)
   else()
     message(FATAL_ERROR "ToFCore library must be installed to ${CMAKE_INSTALL_PREFIX} OR present at ${CMAKE_SOURCE_DIR}/libtofcore")

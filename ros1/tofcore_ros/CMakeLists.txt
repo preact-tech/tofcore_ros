@@ -22,7 +22,6 @@ if(NOT TARGET ToFCore::ToFCore)
   if (EXISTS "${CMAKE_SOURCE_DIR}/libtofcore" AND EXISTS "${CMAKE_SOURCE_DIR}/libtofcore/CMakeLists.txt")
     set(BUILD_PYTHON_BINDINGS OFF)
     add_subdirectory(libtofcore/tofcore)
-    message("added  asdfasdfasdfasdfdasf")
   else()
     message(FATAL_ERROR "ToFCore library must be installed to ${CMAKE_INSTALL_PREFIX} OR present at ${CMAKE_SOURCE_DIR}/libtofcore")
   endif()
@@ -115,7 +114,7 @@ generate_messages(
 catkin_package(
  INCLUDE_DIRS include
  LIBRARIES tofcore_ros1
- CATKIN_DEPENDS roscpp rospy sensor_msgs std_msgs
+ CATKIN_DEPENDS roscpp rospy sensor_msgs std_msgs 
  DEPENDS system_lib
 )
 
@@ -143,8 +142,13 @@ include_directories(
 ## Declare a C++ executable
 ## With catkin_make all packages are built within a single CMake context
 ## The recommended prefix ensures that target names across packages don't collide
- add_executable(${PROJECT_NAME}_node src/sensor_node.cpp)
+add_executable(tof_sensor src/sensor_node.cpp src/main.cpp)
+target_include_directories(tof_sensor PUBLIC
+  $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
+  $<INSTALL_INTERFACE:include>
+  ${catkin_INCLUDE_DIRS}
 
+  )
 ## Rename C++ executable without prefix
 ## The above recommended prefix causes long target names, the following renames the
 ## target back to the shorter version for ease of user use
@@ -156,7 +160,7 @@ include_directories(
 # add_dependencies(${PROJECT_NAME}_node ${${PROJECT_NAME}_EXPORTED_TARGETS} ${catkin_EXPORTED_TARGETS})
 
 ## Specify libraries to link a library or executable target against
-target_link_libraries(${PROJECT_NAME}_node
+target_link_libraries(tof_sensor
   ${catkin_LIBRARIES}
   tofcore
 )
