@@ -27,24 +27,24 @@ constexpr int32_t MAX_INTEGRATION_TIME = 4000;
 
 
 //Read Only params
-constexpr auto API_VERSION  = "api_version";
-constexpr auto CHIP_ID  = "chip_id";
-constexpr auto SENSOR_NAME  = "sensor_name";
-constexpr auto SW_VERSION = "sw_version";
-constexpr auto SENSOR_URL  = "sensor_url"; 
+constexpr auto API_VERSION  = "/api_version";
+constexpr auto CHIP_ID  = "/chip_id";
+constexpr auto SENSOR_NAME  = "/sensor_name";
+constexpr auto SW_VERSION = "/sw_version";
+constexpr auto SENSOR_URL  = "/sensor_url"; 
 
 
 
 //Configurable params
-constexpr auto CAPTURE_MODE = "capture_mode";
-constexpr auto INTEGRATION_TIME = "integration_time";
-constexpr auto STREAMING_STATE = "streaming";
-constexpr auto MODULATION_FREQUENCY = "modulation_frequency";
-constexpr auto DISTANCE_OFFSET = "distance_offset";
-constexpr auto MINIMUM_AMPLITUDE = "minimum_amplitude";
-constexpr auto FLIP_HORIZONTAL= "flip_hotizontal";
-constexpr auto FLIP_VERITCAL = "flip_vertical";
-constexpr auto BINNING  = "binning"; 
+constexpr auto CAPTURE_MODE = "/capture_mode";
+constexpr auto INTEGRATION_TIME = "/integration_time";
+constexpr auto STREAMING_STATE = "/streaming";
+constexpr auto MODULATION_FREQUENCY = "/modulation_frequency";
+constexpr auto DISTANCE_OFFSET = "/distance_offset";
+constexpr auto MINIMUM_AMPLITUDE = "/minimum_amplitude";
+constexpr auto FLIP_HORIZONTAL= "/flip_hotizontal";
+constexpr auto FLIP_VERITCAL = "/flip_vertical";
+constexpr auto BINNING  = "/binning"; 
 
 
 /// Quick helper function that return true if the string haystack starts with the string needle
@@ -63,23 +63,22 @@ ToFSensor::ToFSensor()
   //pub_qos.durability(ros::DurabilityPolicy::TransientLocal);
 
   // Setup topic pulbishers
-  *pub_ambient_ = n.advertise<sensor_msgs::Image>("ambient", pub_qos);
-  *pub_distance_ = n.advertise<sensor_msgs::Image>("depth", pub_qos);//renamed this from distance to depth to match truesense node
-  *pub_amplitude_ = n.advertise<sensor_msgs::Image>("amplitude", pub_qos);
-  *pub_pcd_ = n.advertise<sensor_msgs::PointCloud2>("points", pub_qos);
-  *pub_cust_pcd_ = n.advertise<sensor_msgs::PointCloud2>("points", pub_qos);
-  //*pub_cust_pcd_ = n.advertise<msg::TofcorePointCloud2>("cust_points", pub_qos);
+  pub_ambient_ = this->n.advertise<sensor_msgs::Image>("ambient", pub_qos);
+  pub_distance_ = this->n.advertise<sensor_msgs::Image>("depth", pub_qos);//renamed this from distance to depth to match truesense node
+  pub_amplitude_ = this->n.advertise<sensor_msgs::Image>("amplitude", pub_qos);
+  pub_pcd_ = this->n.advertise<sensor_msgs::PointCloud2>("points", pub_qos);
+  pub_cust_pcd_ = n.advertise<tofcore_ros1::TofcorePointCloud2>("cust_points", pub_qos);
 
   for(size_t i = 0; i != pub_dcs_.size(); i++) {
     std::string topic {"dcs"};
     topic += std::to_string(i);
-    *pub_dcs_[i] = n.advertise<sensor_msgs::Image>(topic, pub_qos);
+    pub_dcs_[i] = this->n.advertise<sensor_msgs::Image>(topic, pub_qos);
   }
 
-  *sensor_temperature_tl = n.advertise<sensor_msgs::Temperature>("sensor_temperature_tl", pub_qos);
-  *sensor_temperature_tr = n.advertise<sensor_msgs::Temperature>("sensor_temperature_tr", pub_qos);
-  *sensor_temperature_bl = n.advertise<sensor_msgs::Temperature>("sensor_temperature_bl", pub_qos);
-  *sensor_temperature_br = n.advertise<sensor_msgs::Temperature>("sensor_temperature_br", pub_qos);
+  sensor_temperature_tl = this->n.advertise<sensor_msgs::Temperature>("sensor_temperature_tl", pub_qos);
+  sensor_temperature_tr = this->n.advertise<sensor_msgs::Temperature>("sensor_temperature_tr", pub_qos);
+  sensor_temperature_bl = this->n.advertise<sensor_msgs::Temperature>("sensor_temperature_bl", pub_qos);
+  sensor_temperature_br = this->n.advertise<sensor_msgs::Temperature>("sensor_temperature_br", pub_qos);
 
   interface_.reset( new tofcore::Sensor(1, "/dev/ttyACM0"));
   (void)interface_->subscribeMeasurement([&](std::shared_ptr<tofcore::Measurement_T> f) -> void
@@ -100,27 +99,27 @@ ToFSensor::ToFSensor()
   //readonly_descriptor.read_only = true;
 
   //Read Only params
-  this->n.setParam(API_VERSION, versionData.m_softwareSourceID,readonly_descriptor);// TODO: Is this the right param
-  this->n.setParam(CHIP_ID, std::to_string(versionData.m_sensorChipId),readonly_descriptor);
-  this->n.setParam(SENSOR_NAME, versionData.m_modelName,readonly_descriptor);
-  this->n.setParam(SW_VERSION, versionData.m_softwareVersion,readonly_descriptor);
-  this->n.setParam(SENSOR_URL,  "/dev/ttyACM0",readonly_descriptor); // TODO: How can I get this from sensor?
+  this->n.param<std::string>(API_VERSION, versionData.m_softwareSourceID);// TODO: Is this the right param
+  this->n.param<std::string>(CHIP_ID, std::to_string(versionData.m_sensorChipId));
+  this->n.param<std::string>(SENSOR_NAME, versionData.m_modelName);
+  this->n.param<std::string>(SW_VERSION, versionData.m_softwareVersion);
+  this->n.param<std::string>(SENSOR_URL,  "/dev/ttyACM0"); // TODO: How can I get this from sensor?
   
 
   //Configurable params
-  this->n.setParam(CAPTURE_MODE, "distance_amplitude");
+  this->n.param<std::string>(CAPTURE_MODE, "distance_amplitude");
   //TODO: Do I need to do this?
   // if(interface_->getIntegrationTimes())
   //   this->n.setParam(INTEGRATION_TIME, interface_->getIntegrationTimes()->at(0));
   // else
-    this->n.setParam(INTEGRATION_TIME, 500);
-  this->n.setParam(STREAMING_STATE, true);
-  this->n.setParam(MODULATION_FREQUENCY, "12");
-  this->n.setParam(DISTANCE_OFFSET, 0);
-  this->n.setParam(MINIMUM_AMPLITUDE, 0);
-  this->n.setParam(FLIP_HORIZONTAL, false);
-  this->n.setParam(FLIP_VERITCAL, false);
-  this->n.setParam(BINNING, false);
+  this->n.param<int>(INTEGRATION_TIME, 500);
+  this->n.param<bool>(STREAMING_STATE, true);
+  this->n.param<std::string>(MODULATION_FREQUENCY, "12");
+  this->n.param<int>(DISTANCE_OFFSET, 0);
+  this->n.param<int>(MINIMUM_AMPLITUDE, 0);
+  this->n.param<bool>(FLIP_HORIZONTAL, false);
+  this->n.param<bool>(FLIP_VERITCAL, false);
+  this->n.param<bool>(BINNING, false);
 
  
 
@@ -129,8 +128,11 @@ ToFSensor::ToFSensor()
   //    std::bind(&ToFSensor::on_set_parameters_callback, this, std::placeholders::_1));
 
   // Update all parameters
-  auto params = this->n.getParamNames(this->list_parameters({}, 1).names);
+  std::vector< std::string >  params ;
+  this->n.getParamNames(params);//this->list_parameters({}, 1).names);
   this->on_set_parameters_callback(params);
+  ROS_INFO("Initialized");
+  //ros::spin();
 }
 
 void ToFSensor::on_set_parameters_callback(
@@ -140,10 +142,14 @@ void ToFSensor::on_set_parameters_callback(
   //rcl_interfaces::msg::SetParametersResult result;
   //result.successful = true;
   //result.reason = "success";
+  ROS_INFO("Setting Params");
 
   for (const auto &parameter : parameters)
   {
-    auto name = parameter;
+
+    auto name = parameter;//.substr(1);
+          ROS_INFO("%s",name.c_str());
+
     if (name == CAPTURE_MODE)
     {
       bool streaming = true;
@@ -214,9 +220,9 @@ void ToFSensor::apply_stream_type_param(const std::string& parameter)
   }
   else
   {
-    result.successful = false;
-    result.reason = "Unknown stream type: "s + value;
-    RCLCPP_ERROR( result.reason.c_str());
+    // result.successful = false;
+    // result.reason = "Unknown stream type: "s + value;
+    // RCLCPP_ERROR( result.reason.c_str());
   }
 }
 
@@ -228,14 +234,12 @@ void ToFSensor::apply_integration_time_param(const std::string& parameter)
   ROS_INFO( "Handling parameter \"%s\" : %li", parameter.c_str(), value);
   if (value < MIN_INTEGRATION_TIME || value > MAX_INTEGRATION_TIME)
   {
-    result.successful = false;
-    result.reason = parameter.get_name() + " value is out of range";
+    // result.successful = false;
+    // result.reason = parameter.get_name() + " value is out of range";
   }
   else
   {
-    uint16_t int_times = 0;
-    int_times = (parameter.get_name() == INTEGRATION_TIME) ? value : get_parameter(INTEGRATION_TIME).as_int();
-    interface_->setIntegrationTime(int_times);
+    interface_->setIntegrationTime(value);
   }
 }
 
@@ -259,8 +263,8 @@ void ToFSensor::apply_hdr_mode_param(const std::string& parameter)
   }
   else
   {
-    result.successful = false;
-    result.reason = parameter.get_name() + " value is out of range";
+    // result.successful = false;
+    // result.reason = parameter.get_name() + " value is out of range";
   }
 }
 
@@ -300,8 +304,8 @@ void ToFSensor::apply_modulation_frequency_param(const std::string& parameter)
   }
   else
   {
-    result.successful = false;
-    result.reason = parameter.get_name() + " value is out of range";
+    // result.successful = false;
+    // result.reason = parameter.get_name() + " value is out of range";
     return;
   }
   interface_->setModulation(mod_freq_index, 0);
@@ -324,8 +328,8 @@ void ToFSensor::apply_streaming_param(const std::string& parameter)
     }
   }
   catch(std::exception& e) {
-    result.successful = false;
-    result.reason = e.what();
+    // result.successful = false;
+    // result.reason = e.what();
   }
 }
 
@@ -385,29 +389,27 @@ void ToFSensor::apply_flip_horizontal_param(const std::string& parameter)
 {
    bool value;
   this->n.getParam(parameter,value);
-  
-      ROS_INFO( "Handling parameter \"%s\" : %s", parameter.c_str(), (value ?"true":"false"));
+  ROS_INFO( "Handling parameter \"%s\" : %s", parameter.c_str(), (value ?"true":"false"));
   //TODO:  It seems we need to stop and restart streaming to change these params
   interface_->stopStream();
   interface_->setFlipHorizontally(value);
-  std::string stream_type;
- // rcl_interfaces::msg::SetParametersResult dummy_result;
-  (void)this->n.getParam(CAPTURE_MODE, stream_type);
-  this->apply_stream_type_param(stream_type);
+  bool is_streaming;
+  (void)this->n.getParam(STREAMING_STATE, is_streaming);
+  if(is_streaming)
+    this->apply_stream_type_param(CAPTURE_MODE);
 }
 void ToFSensor::apply_flip_vertical_param(const std::string& parameter)
 {
-  bool value;
+   bool value;
   this->n.getParam(parameter,value);
-  
-      ROS_INFO( "Handling parameter \"%s\" : %s", parameter.c_str(), (value ?"true":"false"));
-  //TODO: It seems we need to stop and restart streaming to change these params
+  ROS_INFO( "Handling parameter \"%s\" : %s", parameter.c_str(), (value ?"true":"false"));
+  //TODO:  It seems we need to stop and restart streaming to change these params
   interface_->stopStream();
   interface_->setFlipVertically(value);
-  std::string stream_type;
-  //rcl_interfaces::msg::SetParametersResult dummy_result;
-  (void)this->n.getParam(CAPTURE_MODE, stream_type);
-  this->apply_stream_type_param(stream_type);
+  bool is_streaming;
+  (void)this->n.getParam(STREAMING_STATE, is_streaming);
+  if(is_streaming)
+    this->apply_stream_type_param(CAPTURE_MODE);
 }
 void ToFSensor::apply_binning_param(const std::string& parameter)
 {
@@ -434,22 +436,22 @@ void ToFSensor::publish_tempData(const tofcore::Measurement_T &frame, const ros:
     switch (count) {
     case 0:
     {
-      sensor_temperature_tl->publish(tmp);
+      sensor_temperature_tl.publish(tmp);
       break;
     }
     case 1:
     {
-      sensor_temperature_tr->publish(tmp);
+      sensor_temperature_tr.publish(tmp);
       break;
     }
     case 2:
     {
-      sensor_temperature_bl->publish(tmp);
+      sensor_temperature_bl.publish(tmp);
       break;
     }
     case 3:
     {
-      sensor_temperature_br->publish(tmp);
+      sensor_temperature_br.publish(tmp);
       break;
     }
     }
@@ -512,97 +514,97 @@ void ToFSensor::publish_distData(const tofcore::Measurement_T &frame, ros::Publi
 
 void ToFSensor::publish_pointCloud(const tofcore::Measurement_T &frame, ros::Publisher &pub,ros::Publisher &cust_pub, const ros::Time& stamp)
 {
-  // tofcore::TofcorePointCloud2 cloud_msg{};
-  // cloud_msg.header.stamp = stamp;
-  // cloud_msg.header.frame_id = "base_link";
-  // cloud_msg.point_cloud.header.stamp = stamp;
-  // cloud_msg.point_cloud.header.frame_id = "base_link";
-  // cloud_msg.point_cloud.is_dense = true;
-  // cloud_msg.point_cloud.is_bigendian = false;
+  tofcore_ros1::TofcorePointCloud2 cloud_msg{};
+  cloud_msg.header.stamp = stamp;
+  cloud_msg.header.frame_id = "base_link";
+  cloud_msg.point_cloud.header.stamp = stamp;
+  cloud_msg.point_cloud.header.frame_id = "base_link";
+  cloud_msg.point_cloud.is_dense = true;
+  cloud_msg.point_cloud.is_bigendian = false;
 
-  // //Adding this to the message for the auto exposure node
-  // //Need to check if it exists because this is optional value
-  // if (frame.integration_times())
-  // {
-  //   auto integration_times=*std::move(frame.integration_times());
-  //   cloud_msg.integration_time=integration_times.at(0);
-  // }
+  //Adding this to the message for the auto exposure node
+  //Need to check if it exists because this is optional value
+  if (frame.integration_times())
+  {
+    auto integration_times=*std::move(frame.integration_times());
+    cloud_msg.integration_time=integration_times.at(0);
+  }
 
-  // sensor_msgs::PointCloud2Modifier modifier(cloud_msg.point_cloud);
-  // modifier.resize(frame.height() * frame.width());
-  // modifier.setPointCloud2Fields(
-  //     7,
-  //     "x", 1, sensor_msgs::PointField::FLOAT32,
-  //     "y", 1, sensor_msgs::PointField::FLOAT32,
-  //     "z", 1, sensor_msgs::PointField::FLOAT32,
-  //     "amplitude", 1, sensor_msgs::PointField::UINT16,
-  //     "ambient", 1, sensor_msgs::PointField::INT16,
-  //     "valid", 1, sensor_msgs::PointField::UINT8,
-  //     "distance", 1, sensor_msgs::PointField::UINT16); //TODO: do we need phase here?
+  sensor_msgs::PointCloud2Modifier modifier(cloud_msg.point_cloud);
+  modifier.resize(frame.height() * frame.width());
+  modifier.setPointCloud2Fields(
+      7,
+      "x", 1, sensor_msgs::PointField::FLOAT32,
+      "y", 1, sensor_msgs::PointField::FLOAT32,
+      "z", 1, sensor_msgs::PointField::FLOAT32,
+      "amplitude", 1, sensor_msgs::PointField::UINT16,
+      "ambient", 1, sensor_msgs::PointField::INT16,
+      "valid", 1, sensor_msgs::PointField::UINT8,
+      "distance", 1, sensor_msgs::PointField::UINT16); //TODO: do we need phase here?
 
-  // // Note: For some reason setPointCloudFields doesn't set row_step
-  // //      and resets msg height and m_width so setup them here.
-  // cloud_msg.point_cloud.height = static_cast<uint32_t>(frame.height());
-  // cloud_msg.point_cloud.width = static_cast<uint32_t>(frame.width());
-  // cloud_msg.point_cloud.row_step = frame.width() * 19; // 19 is the size in bytes of all the point cloud fields
+  // Note: For some reason setPointCloudFields doesn't set row_step
+  //      and resets msg height and m_width so setup them here.
+  cloud_msg.point_cloud.height = static_cast<uint32_t>(frame.height());
+  cloud_msg.point_cloud.width = static_cast<uint32_t>(frame.width());
+  cloud_msg.point_cloud.row_step = frame.width() * 19; // 19 is the size in bytes of all the point cloud fields
 
-  // sensor_msgs::PointCloud2Iterator<float> it_x(cloud_msg.point_cloud, "x");
-  // sensor_msgs::PointCloud2Iterator<float> it_y(cloud_msg.point_cloud, "y");
-  // sensor_msgs::PointCloud2Iterator<float> it_z(cloud_msg.point_cloud, "z");
-  // sensor_msgs::PointCloud2Iterator<uint16_t> it_amplitude(cloud_msg.point_cloud, "amplitude");
-  // sensor_msgs::PointCloud2Iterator<int16_t> it_ambient(cloud_msg.point_cloud, "ambient");
-  // sensor_msgs::PointCloud2Iterator<uint8_t> it_valid(cloud_msg.point_cloud, "valid");
-  // sensor_msgs::PointCloud2Iterator<uint16_t> it_phase(cloud_msg.point_cloud, "distance");
+  sensor_msgs::PointCloud2Iterator<float> it_x(cloud_msg.point_cloud, "x");
+  sensor_msgs::PointCloud2Iterator<float> it_y(cloud_msg.point_cloud, "y");
+  sensor_msgs::PointCloud2Iterator<float> it_z(cloud_msg.point_cloud, "z");
+  sensor_msgs::PointCloud2Iterator<uint16_t> it_amplitude(cloud_msg.point_cloud, "amplitude");
+  sensor_msgs::PointCloud2Iterator<int16_t> it_ambient(cloud_msg.point_cloud, "ambient");
+  sensor_msgs::PointCloud2Iterator<uint8_t> it_valid(cloud_msg.point_cloud, "valid");
+  sensor_msgs::PointCloud2Iterator<uint16_t> it_phase(cloud_msg.point_cloud, "distance");
 
-  // auto it_d = frame.distance().begin();
-  // auto it_a = frame.amplitude().begin();
-  // uint32_t count = 0;
-  // while (it_d != frame.distance().end())
-  // {
-  //   auto distance = *it_d;
-  //   auto y = count / frame.width();
-  //   auto x = count % frame.width();
-  //   int valid = 0;
-  //   double px, py, pz;
-  //   px = py = pz = 0.1;
-  //   if (distance > 0 && distance < 64000)
-  //   {
-  //     cartesianTransform_.transformPixel(x, y, distance, px, py, pz);
-  //     px /= 1000.0; // mm -> m
-  //     py /= 1000.0; // mm -> m
-  //     pz /= 1000.0; // mm -> m
-  //     valid = 1;
-  //   }
+  auto it_d = frame.distance().begin();
+  auto it_a = frame.amplitude().begin();
+  uint32_t count = 0;
+  while (it_d != frame.distance().end())
+  {
+    auto distance = *it_d;
+    auto y = count / frame.width();
+    auto x = count % frame.width();
+    int valid = 0;
+    double px, py, pz;
+    px = py = pz = 0.1;
+    if (distance > 0 && distance < 64000)
+    {
+      cartesianTransform_.transformPixel(x, y, distance, px, py, pz);
+      px /= 1000.0; // mm -> m
+      py /= 1000.0; // mm -> m
+      pz /= 1000.0; // mm -> m
+      valid = 1;
+    }
 
-  //   *it_x = px;
-  //   *it_y = py;
-  //   *it_z = pz;
-  //   if (frame.type() == tofcore::Measurement_T::DataType::DISTANCE_AMPLITUDE)
-  //   {
-  //     *it_amplitude = *it_a;
-  //     it_a += 1;
-  //   }
-  //   else
-  //   {
-  //     *it_amplitude = pz;
-  //   }
-  //   *it_ambient = 0;
-  //   *it_phase = distance;
-  //   *it_valid = valid;
+    *it_x = px;
+    *it_y = py;
+    *it_z = pz;
+    if (frame.type() == tofcore::Measurement_T::DataType::DISTANCE_AMPLITUDE)
+    {
+      *it_amplitude = *it_a;
+      it_a += 1;
+    }
+    else
+    {
+      *it_amplitude = pz;
+    }
+    *it_ambient = 0;
+    *it_phase = distance;
+    *it_valid = valid;
 
-  //   ++it_x;
-  //   ++it_y;
-  //   ++it_z;
-  //   ++it_amplitude;
-  //   ++it_ambient;
-  //   ++it_phase;
-  //   ++it_valid;
-  //   ++count;
-  //   it_d += 1;
-  // }
-  // //This is dumb and redundant but I don't want to break rviz viewer
-  // pub.publish(cloud_msg.point_cloud);
-  // cust_pub.publish(cloud_msg);
+    ++it_x;
+    ++it_y;
+    ++it_z;
+    ++it_amplitude;
+    ++it_ambient;
+    ++it_phase;
+    ++it_valid;
+    ++count;
+    it_d += 1;
+  }
+  //This is dumb and redundant but I don't want to break rviz viewer
+  pub.publish(cloud_msg.point_cloud);
+  cust_pub.publish(cloud_msg);
 }
 
 
@@ -637,47 +639,48 @@ void ToFSensor::publish_DCSData(const tofcore::Measurement_T &frame, const ros::
       auto begin = reinterpret_cast<const uint8_t*>(frame.dcs(i).begin());
       auto end = begin + (frame_size) ;
       std::copy(begin, end, img.data.begin());
-      pub_dcs_[i]->publish(img);
+      pub_dcs_[i].publish(img);
     }
   }
 }
 
 void ToFSensor::updateFrame(const tofcore::Measurement_T &frame)
 {
+  ROS_INFO("Updating Frame ");
   auto stamp = ros::Time::now();
   switch (frame.type())
   {
   case tofcore::Measurement_T::DataType::AMBIENT:
   {
-    publish_ambientData(frame, *pub_ambient_, stamp);
+    publish_ambientData(frame, pub_ambient_, stamp);
     publish_tempData(frame, stamp);
     break;
   }
   case tofcore::Measurement_T::DataType::GRAYSCALE:
   {
-    publish_ambientData(frame, *pub_ambient_, stamp);
+    publish_ambientData(frame, pub_ambient_, stamp);
     publish_tempData(frame, stamp);
     break;
   }
   case tofcore::Measurement_T::DataType::DISTANCE_AMPLITUDE:
   {
-    publish_amplData(frame, *pub_amplitude_, stamp);
-    publish_distData(frame, *pub_distance_, stamp);
-    publish_pointCloud(frame, *pub_pcd_, *pub_cust_pcd_, stamp);
+    publish_amplData(frame, pub_amplitude_, stamp);
+    publish_distData(frame, pub_distance_, stamp);
+    publish_pointCloud(frame, pub_pcd_, pub_cust_pcd_, stamp);
     publish_tempData(frame, stamp);
     break;
   }
   case tofcore::Measurement_T::DataType::AMPLITUDE:
   {
     // Probably not the case we just stream amplitude, but its here
-    publish_amplData(frame, *pub_amplitude_, stamp);
+    publish_amplData(frame, pub_amplitude_, stamp);
     publish_tempData(frame, stamp);
     break;
   }
   case tofcore::Measurement_T::DataType::DISTANCE:
   {
-    publish_distData(frame, *pub_distance_, stamp);
-    publish_pointCloud(frame, *pub_pcd_, *pub_cust_pcd_, stamp);
+    publish_distData(frame, pub_distance_, stamp);
+    publish_pointCloud(frame, pub_pcd_, pub_cust_pcd_, stamp);
     publish_tempData(frame, stamp);
     break;
   }

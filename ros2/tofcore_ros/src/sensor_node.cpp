@@ -132,7 +132,7 @@ ToFSensor::ToFSensor()
   if(init_name)
     this->declare_parameter(SENSOR_NAME, *init_name);
   else
-    this->declare_parameter(SENSOR_NAME, "sensor_name1");
+    this->declare_parameter(SENSOR_NAME, "Mojave");
 
   if(init_location)
   {
@@ -141,8 +141,8 @@ ToFSensor::ToFSensor()
   }
   else
   {
-    this->declare_parameter(SENSOR_LOCATION, "Top");
-    this->sensor_location_="Top";
+    this->declare_parameter(SENSOR_LOCATION, "Unknown");
+    this->sensor_location_="Unknown";
   }
 
   if(init_integration)

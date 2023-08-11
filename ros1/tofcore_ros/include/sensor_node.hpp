@@ -16,7 +16,7 @@
 #include <sensor_msgs/Image.h>
 #include <sensor_msgs/point_cloud2_iterator.h>
 #include <sensor_msgs/Temperature.h>
-//#include <msg/tofcore_point_cloud2.hpp>
+#include <tofcore_ros1/TofcorePointCloud2.h>
 #include <sensor_msgs/image_encodings.h>
 
 
@@ -25,16 +25,16 @@ class ToFSensor // : public ros::Node
 {
   private:
   
-    boost::shared_ptr<ros::Publisher> pub_ambient_;
-    boost::shared_ptr<ros::Publisher> pub_distance_;
-    boost::shared_ptr<ros::Publisher> pub_amplitude_;
-    boost::shared_ptr<ros::Publisher> pub_cust_pcd_;
-    boost::shared_ptr<ros::Publisher> pub_pcd_;
-    std::array<boost::shared_ptr<ros::Publisher>, 4> pub_dcs_;
-    boost::shared_ptr<ros::Publisher> sensor_temperature_tl;
-    boost::shared_ptr<ros::Publisher> sensor_temperature_tr;
-    boost::shared_ptr<ros::Publisher> sensor_temperature_bl;
-    boost::shared_ptr<ros::Publisher> sensor_temperature_br;
+    ros::Publisher pub_ambient_;
+    ros::Publisher pub_distance_;
+    ros::Publisher pub_amplitude_;
+    ros::Publisher pub_cust_pcd_;
+    ros::Publisher pub_pcd_;
+    std::array<ros::Publisher, 4> pub_dcs_;
+    ros::Publisher sensor_temperature_tl;
+    ros::Publisher sensor_temperature_tr;
+    ros::Publisher sensor_temperature_bl;
+    ros::Publisher sensor_temperature_br;
 
     std::unique_ptr<tofcore::Sensor> interface_;
     tofcore::CartesianTransform cartesianTransform_;

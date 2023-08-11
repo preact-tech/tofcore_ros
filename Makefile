@@ -62,7 +62,8 @@ build:
 
 .PHONY: ros1
 ros1:
-	 cd ros1 &&  source /opt/ros/noetic/setup.bash && colcon build 
+	 cd ros1 &&  source /opt/ros/noetic/setup.bash && colcon build --cmake-args -DCMAKE_BUILD_TYPE=Debug
+
 
 .PHONY: bridge
 bridge: build ##	Build the ROS1 bridge, build environment must have both ROS1 and ROS2 installed
