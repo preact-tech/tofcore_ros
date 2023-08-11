@@ -29,7 +29,7 @@ constexpr int32_t MAX_INTEGRATION_TIME = 4000;
 //Read Only params
 constexpr auto API_VERSION  = "/api_version";
 constexpr auto CHIP_ID  = "/chip_id";
-constexpr auto SENSOR_NAME  = "/sensor_name";
+constexpr auto MODEL_NAME  = "/model_name";
 constexpr auto SW_VERSION = "/sw_version";
 constexpr auto SENSOR_URL  = "/sensor_url"; 
 
@@ -45,6 +45,10 @@ constexpr auto MINIMUM_AMPLITUDE = "/minimum_amplitude";
 constexpr auto FLIP_HORIZONTAL= "/flip_hotizontal";
 constexpr auto FLIP_VERITCAL = "/flip_vertical";
 constexpr auto BINNING  = "/binning"; 
+constexpr auto SENSOR_NAME  = "/sensor_name";
+constexpr auto SENSOR_LOCATION  = "/sensor_location";
+constexpr auto DISCOVERY_FILTER  = "/discovery_filter"; //TODO: Implement this
+
 
 
 /// Quick helper function that return true if the string haystack starts with the string needle
@@ -101,18 +105,13 @@ ToFSensor::ToFSensor()
   //Read Only params
   this->n.param<std::string>(API_VERSION, versionData.m_softwareSourceID);// TODO: Is this the right param
   this->n.param<std::string>(CHIP_ID, std::to_string(versionData.m_sensorChipId));
-  this->n.param<std::string>(SENSOR_NAME, versionData.m_modelName);
+  this->n.param<std::string>(MODEL_NAME, versionData.m_modelName);
   this->n.param<std::string>(SW_VERSION, versionData.m_softwareVersion);
   this->n.param<std::string>(SENSOR_URL,  "/dev/ttyACM0"); // TODO: How can I get this from sensor?
   
 
   //Configurable params
   this->n.param<std::string>(CAPTURE_MODE, "distance_amplitude");
-  //TODO: Do I need to do this?
-  // if(interface_->getIntegrationTimes())
-  //   this->n.setParam(INTEGRATION_TIME, interface_->getIntegrationTimes()->at(0));
-  // else
-  this->n.param<int>(INTEGRATION_TIME, 500);
   this->n.param<bool>(STREAMING_STATE, true);
   this->n.param<std::string>(MODULATION_FREQUENCY, "12");
   this->n.param<int>(DISTANCE_OFFSET, 0);
@@ -121,21 +120,104 @@ ToFSensor::ToFSensor()
   this->n.param<bool>(FLIP_VERITCAL, false);
   this->n.param<bool>(BINNING, false);
 
- 
+  //Reading optional values from sensor
+  std::optional<std::string> init_name = interface_->getSensorName();
+  std::optional<std::string>  init_location = interface_->getSensorLocation();
+  std::optional<std::vector<short unsigned int> >  init_integration = interface_->getIntegrationTimes();
+
+  if(init_name)
+    this->n.param<std::string>(SENSOR_NAME, *init_name);
+  else
+    this->n.param<std::string>(SENSOR_NAME, "Mojave");
+
+  if(init_location)
+  {
+    this->n.param<std::string>(SENSOR_LOCATION, *init_location);
+    this->sensor_location_=*init_location;
+  }
+  else
+  {
+    this->n.param<std::string>(SENSOR_LOCATION, "Unknown");
+    this->sensor_location_="Unknown";
+  }
+
+  if(init_integration)
+    this->n.param<int32_t>(INTEGRATION_TIME, (*init_integration).at(0));
+  else
+    this->n.param<int32_t>(INTEGRATION_TIME, 500);
 
   // Setup a callback so that we can react to parameter changes from the outside world.
-  //parameters_callback_handle_ = this->add_on_set_parameters_callback(
+  // parameters_callback_handle_ = this->add_on_set_parameters_callback(
   //    std::bind(&ToFSensor::on_set_parameters_callback, this, std::placeholders::_1));
+
+
+   
+   //this->f = boost::bind(&ToFSensor::on_set_parameters_callback,this, std::placeholders::_1, std::placeholders::_2);
+   //this->server.setCallback(f);
 
   // Update all parameters
   std::vector< std::string >  params ;
   this->n.getParamNames(params);//this->list_parameters({}, 1).names);
-  this->on_set_parameters_callback(params);
+  this->on_set_parameters(params);
   ROS_INFO("Initialized");
-  //ros::spin();
 }
 
-void ToFSensor::on_set_parameters_callback(
+void on_set_parameters_callback(tofcore_ros1::tofcoreConfig &config, uint32_t level)
+{
+  // assume success, if any parameter set below fails this will be changed
+  //rcl_interfaces::msg::SetParametersResult result;
+  //result.successful = true;
+  //result.reason = "success";
+  ROS_INFO("Setting Params");
+
+  // for (const auto &parameter : parameters)
+  // {
+
+  //   if (parameter == CAPTURE_MODE)
+  //   {
+  //     bool streaming = true;
+  //     this->n.getParam(STREAMING_STATE, streaming);
+  //     if (streaming)
+  //     {
+  //       this->apply_stream_type_param(parameter);
+  //     }
+  //   }
+  //   else if (begins_with("integration_time", parameter))
+  //   {
+  //     this->apply_integration_time_param(parameter);
+  //   }
+  //   else if( parameter == STREAMING_STATE)
+  //   {
+  //     this->apply_streaming_param(parameter);
+  //   }
+  //   else if( parameter == MODULATION_FREQUENCY)
+  //   {
+  //     this->apply_modulation_frequency_param(parameter);
+  //   }
+  //   else if( parameter == DISTANCE_OFFSET)
+  //   {
+  //     this->apply_distance_offset_param(parameter);
+  //   }
+  //   else if( parameter == MINIMUM_AMPLITUDE)
+  //   {
+  //     this->apply_minimum_amplitude_param(parameter);
+  //   }
+  //   else if( parameter == FLIP_HORIZONTAL)
+  //   {
+  //     this->apply_flip_horizontal_param(parameter);
+
+  //   }
+  //   else if( parameter == FLIP_VERITCAL)
+  //   {
+  //     this->apply_flip_vertical_param(parameter);
+  //   }
+  //       else if( parameter == BINNING)
+  //   {
+  //     this->apply_binning_param(parameter);
+  //   }
+  // }
+}
+void ToFSensor::on_set_parameters(
     const std::vector<std::string> &parameters)
 {
   // assume success, if any parameter set below fails this will be changed
@@ -147,10 +229,7 @@ void ToFSensor::on_set_parameters_callback(
   for (const auto &parameter : parameters)
   {
 
-    auto name = parameter;//.substr(1);
-          ROS_INFO("%s",name.c_str());
-
-    if (name == CAPTURE_MODE)
+    if (parameter == CAPTURE_MODE)
     {
       bool streaming = true;
       this->n.getParam(STREAMING_STATE, streaming);
@@ -159,41 +238,40 @@ void ToFSensor::on_set_parameters_callback(
         this->apply_stream_type_param(parameter);
       }
     }
-    else if (begins_with("integration_time", name))
+    else if (begins_with("integration_time", parameter))
     {
       this->apply_integration_time_param(parameter);
     }
-    else if( name == STREAMING_STATE)
+    else if( parameter == STREAMING_STATE)
     {
       this->apply_streaming_param(parameter);
     }
-    else if( name == MODULATION_FREQUENCY)
+    else if( parameter == MODULATION_FREQUENCY)
     {
       this->apply_modulation_frequency_param(parameter);
     }
-    else if( name == DISTANCE_OFFSET)
+    else if( parameter == DISTANCE_OFFSET)
     {
       this->apply_distance_offset_param(parameter);
     }
-    else if( name == MINIMUM_AMPLITUDE)
+    else if( parameter == MINIMUM_AMPLITUDE)
     {
       this->apply_minimum_amplitude_param(parameter);
     }
-    else if( name == FLIP_HORIZONTAL)
+    else if( parameter == FLIP_HORIZONTAL)
     {
       this->apply_flip_horizontal_param(parameter);
 
     }
-    else if( name == FLIP_VERITCAL)
+    else if( parameter == FLIP_VERITCAL)
     {
       this->apply_flip_vertical_param(parameter);
     }
-        else if( name == BINNING)
+        else if( parameter == BINNING)
     {
       this->apply_binning_param(parameter);
     }
   }
-  //return result;
 }
 
 
@@ -229,9 +307,9 @@ void ToFSensor::apply_stream_type_param(const std::string& parameter)
 
 void ToFSensor::apply_integration_time_param(const std::string& parameter)
 {
-  int value;
+  int32_t value;
   this->n.getParam(parameter,value);
-  ROS_INFO( "Handling parameter \"%s\" : %li", parameter.c_str(), value);
+  ROS_INFO( "Handling parameter \"%s\" : %d", parameter.c_str(), value);
   if (value < MIN_INTEGRATION_TIME || value > MAX_INTEGRATION_TIME)
   {
     // result.successful = false;
@@ -370,18 +448,18 @@ void ToFSensor::apply_lens_type_param(const std::string& parameter)
 
 void ToFSensor::apply_distance_offset_param(const std::string& parameter)
 {
-  int value;
+  int32_t value;
   this->n.getParam(parameter,value);
-    ROS_INFO( "Handling parameter \"%s\" : %ld", parameter.c_str(), value);
+    ROS_INFO( "Handling parameter \"%s\" : %d", parameter.c_str(), value);
 
   interface_->setOffset(value);
 }
 
 void ToFSensor::apply_minimum_amplitude_param(const std::string& parameter)
 {
-  int value;
+  int32_t value;
   this->n.getParam(parameter,value);
-    ROS_INFO( "Handling parameter \"%s\" : %ld", parameter.c_str(), value);
+    ROS_INFO( "Handling parameter \"%s\" : %d", parameter.c_str(), value);
 
   interface_->setMinAmplitude(value);
 }

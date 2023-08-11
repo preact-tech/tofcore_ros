@@ -18,6 +18,8 @@
 #include <sensor_msgs/Temperature.h>
 #include <tofcore_ros1/TofcorePointCloud2.h>
 #include <sensor_msgs/image_encodings.h>
+#include <dynamic_reconfigure/server.h>
+#include <tofcore_ros1/tofcoreConfig.h>
 
 
 /// ToFSensor ROS1 node class for interacting with a PreAct ToF sensor/camera
@@ -39,6 +41,9 @@ class ToFSensor // : public ros::Node
     std::unique_ptr<tofcore::Sensor> interface_;
     tofcore::CartesianTransform cartesianTransform_;
     ros::NodeHandle n; 
+    std::string sensor_location_;
+    dynamic_reconfigure::Server<tofcore_ros1::tofcoreConfig> server;
+    dynamic_reconfigure::Server<tofcore_ros1::tofcoreConfig>::CallbackType f;
     public:
     /// Standard constructor
     ToFSensor();
@@ -46,9 +51,9 @@ class ToFSensor // : public ros::Node
   private:
     /// Callback method to be called when a parameter is changed.
     //OnSetParametersCallbackHandle::SharedPtr parameters_callback_handle_;
-    void on_set_parameters_callback(
+    void on_set_parameters(
         const std::vector<std::string> &parameters);
-
+    void on_set_parameters_callback(tofcore_ros1::tofcoreConfig &config, uint32_t level);
     /// Publish received temperature data in frame to the to four different temperature topics (pub_temps_) with timestamp stamp.
     void publish_tempData(const tofcore::Measurement_T& frame, const ros::Time& stamp);
 
@@ -82,6 +87,8 @@ class ToFSensor // : public ros::Node
     void apply_flip_horizontal_param(const std::string& parameter);
     void apply_flip_vertical_param(const std::string& parameter);
     void apply_binning_param(const std::string& parameter);
+    void apply_sensor_name_param(const std::string& parameter);
+    void apply_sensor_location_param(const std::string& parameter);
 
 };
 
