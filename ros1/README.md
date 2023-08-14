@@ -23,7 +23,7 @@ source ./install/setup.bash
 
 ### Testing
 
-One can quickly view a pointcloud generated from distance data generated on the device using the `tofcore.launch.py` launch file like so: 
+One run the node by running the following commands: 
 
 Terminal 1:
 ```

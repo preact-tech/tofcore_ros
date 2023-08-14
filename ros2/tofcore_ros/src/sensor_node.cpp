@@ -568,9 +568,6 @@ void ToFSensor::publish_pointCloud(const tofcore::Measurement_T &frame, rclcpp::
   }
 
   sensor_msgs::PointCloud2Modifier modifier(cloud_msg.point_cloud);
-  cloud_msg.is_dense = true;
-  cloud_msg.is_bigendian = false;
-  sensor_msgs::PointCloud2Modifier modifier(cloud_msg);
   modifier.resize(frame.height() * frame.width());
   modifier.setPointCloud2Fields(
       7,

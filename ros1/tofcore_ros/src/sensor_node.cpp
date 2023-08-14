@@ -139,7 +139,7 @@ ToFSensor::ToFSensor(ros::NodeHandle nh)
   ROS_INFO("Initialized");
 }
 
-void ToFSensor::on_set_parameters_callback( tofcore_ros1::tofcoreConfig &config, uint32_t level)
+void ToFSensor::on_set_parameters_callback( tofcore_ros1::tofcoreConfig &config, uint32_t )
 {
   //Keeping track of the old config items is clunky, but I can't find a better way to determine which of the parameters have changed
   std::vector< std::string >  parameters ;
