@@ -55,7 +55,6 @@ constexpr auto SENSOR_LOCATION  = "sensor_location";
 constexpr auto DISCOVERY_FILTER  = "discovery_filter"; //TODO: Implement this
 
 
-
 /// Quick helper function that return true if the string haystack starts with the string needle
 bool begins_with(const std::string& needle, const std::string& haystack )
 {
@@ -107,11 +106,11 @@ ToFSensor::ToFSensor()
   readonly_descriptor.read_only = true;
 
   //Read Only params
-  this->declare_parameter(API_VERSION, versionData.m_softwareSourceID,readonly_descriptor);// TODO: Is this the right param
+  this->declare_parameter(API_VERSION, versionData.m_softwareSourceID,readonly_descriptor);// TODO: Update this when API version is availible
   this->declare_parameter(CHIP_ID, std::to_string(versionData.m_sensorChipId),readonly_descriptor);
   this->declare_parameter(MODEL_NAME, versionData.m_modelName,readonly_descriptor);
   this->declare_parameter(SW_VERSION, versionData.m_softwareVersion,readonly_descriptor);
-  this->declare_parameter(SENSOR_URL,  "/dev/ttyACM0",readonly_descriptor); // TODO: How can I get this from sensor?
+  this->declare_parameter(SENSOR_URL,  "/dev/ttyACM0",readonly_descriptor); 
   
 
   //Configurable params
@@ -124,7 +123,7 @@ ToFSensor::ToFSensor()
   this->declare_parameter(FLIP_VERITCAL, false);
   this->declare_parameter(BINNING, false);
 
- //Reading optional values from sensor
+  //Reading optional values from sensor
   std::optional<std::string> init_name = interface_->getSensorName();
   std::optional<std::string>  init_location = interface_->getSensorLocation();
   std::optional<std::vector<short unsigned int> >  init_integration = interface_->getIntegrationTimes();
@@ -208,7 +207,7 @@ rcl_interfaces::msg::SetParametersResult ToFSensor::on_set_parameters_callback(
     {
       this->apply_flip_vertical_param(parameter, result);
     }
-        else if( name == BINNING)
+    else if( name == BINNING)
     {
       this->apply_binning_param(parameter, result);
     }
@@ -335,13 +334,13 @@ void ToFSensor::apply_modulation_frequency_param(const rclcpp::Parameter& parame
 }
 
 void ToFSensor::apply_streaming_param(const rclcpp::Parameter& parameter, rcl_interfaces::msg::SetParametersResult& result)
-{
+{      rcl_interfaces::msg::SetParametersResult dummy_result;
+
   try {
     auto value = parameter.as_bool();
     RCLCPP_INFO(this->get_logger(), "Handling parameter \"%s\" : %s", parameter.get_name().c_str(), (value ?"true":"false"));
     if(value) {
       rclcpp::Parameter stream_type;
-      rcl_interfaces::msg::SetParametersResult dummy_result;
       (void)this->get_parameter(CAPTURE_MODE, stream_type);
       this->apply_stream_type_param(stream_type, dummy_result);
     } else {
@@ -516,7 +515,6 @@ void ToFSensor::publish_amplData(const tofcore::Measurement_T &frame, rclcpp::Pu
 
 }
 
-//TODO: I thought we couldnt do ambient, or can we not do ambient and distance/amp at the same time? understand this?
 void ToFSensor::publish_ambientData(const tofcore::Measurement_T &frame, rclcpp::Publisher<sensor_msgs::msg::Image> &pub, const rclcpp::Time& stamp)
 {
   sensor_msgs::msg::Image img;
@@ -570,6 +568,9 @@ void ToFSensor::publish_pointCloud(const tofcore::Measurement_T &frame, rclcpp::
   }
 
   sensor_msgs::PointCloud2Modifier modifier(cloud_msg.point_cloud);
+  cloud_msg.is_dense = true;
+  cloud_msg.is_bigendian = false;
+  sensor_msgs::PointCloud2Modifier modifier(cloud_msg);
   modifier.resize(frame.height() * frame.width());
   modifier.setPointCloud2Fields(
       7,
@@ -579,7 +580,7 @@ void ToFSensor::publish_pointCloud(const tofcore::Measurement_T &frame, rclcpp::
       "amplitude", 1, sensor_msgs::msg::PointField::UINT16,
       "ambient", 1, sensor_msgs::msg::PointField::INT16,
       "valid", 1, sensor_msgs::msg::PointField::UINT8,
-      "distance", 1, sensor_msgs::msg::PointField::UINT16); //TODO: do we need phase here?
+      "distance", 1, sensor_msgs::msg::PointField::UINT16);
 
   // Note: For some reason setPointCloudFields doesn't set row_step
   //      and resets msg height and m_width so setup them here.
