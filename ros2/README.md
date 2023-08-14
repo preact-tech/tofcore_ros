@@ -16,7 +16,8 @@
 
 Once the prerequisits are installed and actived (the case of ROS) building should be as easy as: 
 ```
-make release
+make build
+cd ros2
 source ./install/setup.bash
 ```
 

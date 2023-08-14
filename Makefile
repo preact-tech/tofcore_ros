@@ -62,7 +62,7 @@ build:
 
 .PHONY: ros1
 ros1:
-	 cd ros1 &&  source /opt/ros/noetic/setup.bash && colcon build --cmake-args -DCMAKE_BUILD_TYPE=Debug
+	 cd ros1 &&  source /opt/ros/noetic/setup.bash && colcon build
 
 
 .PHONY: bridge
@@ -92,4 +92,5 @@ clean:
 .PHONY: clobber
 clobber: clean
 	rm -rf libtofcore ros2/tofcore_ros/libtofcore
+	rm -rf libtofcore ros1/tofcore_ros/libtofcore
 	rm -r -f ros1_bridge
