@@ -30,8 +30,13 @@ roscore
 ```
 Terminal 2:
 ```
+rosrun rqt_reconfigure rqt_reconfigure
+```
+Terminal 2:
+```
 rosrun --prefix 'gdb --args' tofcore_ros1 tof_sensor
 ```
 
 colcon build --cmake-args -DCMAKE_BUILD_TYPE=Debug
 catkin_make -DCMAKE_BUILD_TYPE=Debug
+b sensor_node.cpp:155

@@ -10,6 +10,8 @@
 #include <functional>
 #include <memory>
 #include <string>
+#include <vector>
+#include <optional>
 
 #include <ros/ros.h>
 #include <sensor_msgs/PointCloud2.h>
@@ -20,6 +22,8 @@
 #include <sensor_msgs/image_encodings.h>
 #include <dynamic_reconfigure/server.h>
 #include <tofcore_ros1/tofcoreConfig.h>
+
+
 
 
 /// ToFSensor ROS1 node class for interacting with a PreAct ToF sensor/camera
@@ -40,20 +44,21 @@ class ToFSensor // : public ros::Node
 
     std::unique_ptr<tofcore::Sensor> interface_;
     tofcore::CartesianTransform cartesianTransform_;
-    ros::NodeHandle n; 
+    ros::NodeHandle n_; 
     std::string sensor_location_;
-    dynamic_reconfigure::Server<tofcore_ros1::tofcoreConfig> server;
-    dynamic_reconfigure::Server<tofcore_ros1::tofcoreConfig>::CallbackType f;
+    dynamic_reconfigure::Server<tofcore_ros1::tofcoreConfig> server_;
+    dynamic_reconfigure::Server<tofcore_ros1::tofcoreConfig>::CallbackType f_;
+    tofcore_ros1::tofcoreConfig oldConfig_;
+
     public:
     /// Standard constructor
-    ToFSensor();
+    ToFSensor(ros::NodeHandle nh);
 
   private:
     /// Callback method to be called when a parameter is changed.
     //OnSetParametersCallbackHandle::SharedPtr parameters_callback_handle_;
-    void on_set_parameters(
-        const std::vector<std::string> &parameters);
-    void on_set_parameters_callback(tofcore_ros1::tofcoreConfig &config, uint32_t level);
+
+    void on_set_parameters_callback( tofcore_ros1::tofcoreConfig &config, uint32_t level);
     /// Publish received temperature data in frame to the to four different temperature topics (pub_temps_) with timestamp stamp.
     void publish_tempData(const tofcore::Measurement_T& frame, const ros::Time& stamp);
 
@@ -76,19 +81,17 @@ class ToFSensor // : public ros::Node
     void updateFrame(const tofcore::Measurement_T& frame);
 
     /// Helper methods to send parameter updates down to the sensor
-    void apply_stream_type_param(const std::string& parameter);
-    void apply_integration_time_param(const std::string& parameter); 
-    void apply_hdr_mode_param(const std::string& parameter); 
-    void apply_streaming_param(const std::string& parameter);
-    void apply_lens_type_param(const std::string& parameter);
-    void apply_modulation_frequency_param(const std::string& parameter);
-    void apply_distance_offset_param(const std::string& parameter);
-    void apply_minimum_amplitude_param(const std::string& parameter);
-    void apply_flip_horizontal_param(const std::string& parameter);
-    void apply_flip_vertical_param(const std::string& parameter);
-    void apply_binning_param(const std::string& parameter);
-    void apply_sensor_name_param(const std::string& parameter);
-    void apply_sensor_location_param(const std::string& parameter);
+    void apply_stream_type_param(const std::string& parameter ,tofcore_ros1::tofcoreConfig &config);
+    void apply_integration_time_param(const std::string& parameter ,tofcore_ros1::tofcoreConfig &config); 
+    void apply_streaming_param(const std::string& parameter ,tofcore_ros1::tofcoreConfig &config);
+    void apply_modulation_frequency_param(const std::string& parameter ,tofcore_ros1::tofcoreConfig &config);
+    void apply_distance_offset_param(const std::string& parameter ,tofcore_ros1::tofcoreConfig &config);
+    void apply_minimum_amplitude_param(const std::string& parameter ,tofcore_ros1::tofcoreConfig &config);
+    void apply_flip_horizontal_param(const std::string& parameter ,tofcore_ros1::tofcoreConfig &config);
+    void apply_flip_vertical_param(const std::string& parameter ,tofcore_ros1::tofcoreConfig &config);
+    void apply_binning_param(const std::string& parameter ,tofcore_ros1::tofcoreConfig &config);
+    void apply_sensor_name_param(const std::string& parameter ,tofcore_ros1::tofcoreConfig &config);
+    void apply_sensor_location_param(const std::string& parameter ,tofcore_ros1::tofcoreConfig &config);
 
 };
 
