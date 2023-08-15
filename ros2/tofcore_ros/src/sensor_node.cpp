@@ -1,21 +1,5 @@
 #include "sensor_node.hpp"
 
-#include <tofcore/tof_sensor.hpp>
-#include <tofcore/cartesian_transform.hpp>
-
-#include <chrono>
-#include <functional>
-#include <memory>
-#include <string>
-#include <vector>
-#include <optional>
-
-#include <rclcpp/rclcpp.hpp>
-#include <sensor_msgs/msg/point_cloud2.hpp>
-#include <sensor_msgs/msg/image.hpp>
-#include <sensor_msgs/point_cloud2_iterator.hpp>
-#include <sensor_msgs/image_encodings.hpp>
-#include <sensor_msgs/msg/temperature.hpp>
 
 
 using namespace std::chrono_literals;
@@ -74,7 +58,7 @@ ToFSensor::ToFSensor()
   pub_distance_ = this->create_publisher<sensor_msgs::msg::Image>("depth", pub_qos);//renamed this from distance to depth to match truesense node
   pub_amplitude_ = this->create_publisher<sensor_msgs::msg::Image>("amplitude", pub_qos);
   pub_pcd_ = this->create_publisher<sensor_msgs::msg::PointCloud2>("points", pub_qos);
-  pub_cust_pcd_ = this->create_publisher<tofcore_msgs::msg::TofcorePointCloud2>("cust_points", pub_qos);
+  pub_integration_ = this->create_publisher<tofcore_msgs::msg::IntegrationTime>("frame_raw", pub_qos);
 
   for(size_t i = 0; i != pub_dcs_.size(); i++) {
     std::string topic {"dcs"};
@@ -87,6 +71,8 @@ ToFSensor::ToFSensor()
   sensor_temperature_bl = this->create_publisher<sensor_msgs::msg::Temperature>("sensor_temperature_bl", pub_qos);
   sensor_temperature_br = this->create_publisher<sensor_msgs::msg::Temperature>("sensor_temperature_br", pub_qos);
 
+
+ 
   interface_.reset( new tofcore::Sensor(1, "/dev/ttyACM0"));
   (void)interface_->subscribeMeasurement([&](std::shared_ptr<tofcore::Measurement_T> f) -> void
                                          { updateFrame(*f); });
@@ -157,6 +143,8 @@ ToFSensor::ToFSensor()
   auto params = this->get_parameters(this->list_parameters({}, 1).names);
   this->on_set_parameters_callback(params);
 }
+
+
 
 rcl_interfaces::msg::SetParametersResult ToFSensor::on_set_parameters_callback(
     const std::vector<rclcpp::Parameter> &parameters)
@@ -549,25 +537,25 @@ void ToFSensor::publish_distData(const tofcore::Measurement_T &frame, rclcpp::Pu
   pub.publish(img);
 }
 
-void ToFSensor::publish_pointCloud(const tofcore::Measurement_T &frame, rclcpp::Publisher<sensor_msgs::msg::PointCloud2> &pub,rclcpp::Publisher<tofcore_msgs::msg::TofcorePointCloud2> &cust_pub, const rclcpp::Time& stamp)
+void ToFSensor::publish_pointCloud(const tofcore::Measurement_T &frame, rclcpp::Publisher<sensor_msgs::msg::PointCloud2> &pub,rclcpp::Publisher<tofcore_msgs::msg::IntegrationTime> &cust_pub, const rclcpp::Time& stamp)
 {
-  tofcore_msgs::msg::TofcorePointCloud2 cloud_msg{};
+  sensor_msgs::msg::PointCloud2 cloud_msg{};
   cloud_msg.header.stamp = stamp;
   cloud_msg.header.frame_id = this->sensor_location_;
-  cloud_msg.point_cloud.header.stamp = stamp;
-  cloud_msg.point_cloud.header.frame_id = this->sensor_location_;
-  cloud_msg.point_cloud.is_dense = true;
-  cloud_msg.point_cloud.is_bigendian = false;
-
+  cloud_msg.is_dense = true;
+  cloud_msg.is_bigendian = false;
+  tofcore_msgs::msg::IntegrationTime integration_msg{};
+  integration_msg.header.stamp = stamp;
+  integration_msg.header.frame_id = this->sensor_location_;
   //Adding this to the message for the auto exposure node
   //Need to check if it exists because this is optional value
   if (frame.integration_times())
   {
     auto integration_times=*std::move(frame.integration_times());
-    cloud_msg.integration_time=integration_times.at(0);
+    integration_msg.integration_time=integration_times.at(0);
   }
 
-  sensor_msgs::PointCloud2Modifier modifier(cloud_msg.point_cloud);
+  sensor_msgs::PointCloud2Modifier modifier(cloud_msg);
   modifier.resize(frame.height() * frame.width());
   modifier.setPointCloud2Fields(
       7,
@@ -581,17 +569,17 @@ void ToFSensor::publish_pointCloud(const tofcore::Measurement_T &frame, rclcpp::
 
   // Note: For some reason setPointCloudFields doesn't set row_step
   //      and resets msg height and m_width so setup them here.
-  cloud_msg.point_cloud.height = static_cast<uint32_t>(frame.height());
-  cloud_msg.point_cloud.width = static_cast<uint32_t>(frame.width());
-  cloud_msg.point_cloud.row_step = frame.width() * 19; // 19 is the size in bytes of all the point cloud fields
+  cloud_msg.height = static_cast<uint32_t>(frame.height());
+  cloud_msg.width = static_cast<uint32_t>(frame.width());
+  cloud_msg.row_step = frame.width() * 19; // 19 is the size in bytes of all the point cloud fields
 
-  sensor_msgs::PointCloud2Iterator<float> it_x{cloud_msg.point_cloud, "x"};
-  sensor_msgs::PointCloud2Iterator<float> it_y{cloud_msg.point_cloud, "y"};
-  sensor_msgs::PointCloud2Iterator<float> it_z{cloud_msg.point_cloud, "z"};
-  sensor_msgs::PointCloud2Iterator<uint16_t> it_amplitude{cloud_msg.point_cloud, "amplitude"};
-  sensor_msgs::PointCloud2Iterator<int16_t> it_ambient{cloud_msg.point_cloud, "ambient"};
-  sensor_msgs::PointCloud2Iterator<uint8_t> it_valid{cloud_msg.point_cloud, "valid"};
-  sensor_msgs::PointCloud2Iterator<uint16_t> it_phase{cloud_msg.point_cloud, "distance"};
+  sensor_msgs::PointCloud2Iterator<float> it_x{cloud_msg, "x"};
+  sensor_msgs::PointCloud2Iterator<float> it_y{cloud_msg, "y"};
+  sensor_msgs::PointCloud2Iterator<float> it_z{cloud_msg, "z"};
+  sensor_msgs::PointCloud2Iterator<uint16_t> it_amplitude{cloud_msg, "amplitude"};
+  sensor_msgs::PointCloud2Iterator<int16_t> it_ambient{cloud_msg, "ambient"};
+  sensor_msgs::PointCloud2Iterator<uint8_t> it_valid{cloud_msg, "valid"};
+  sensor_msgs::PointCloud2Iterator<uint16_t> it_phase{cloud_msg, "distance"};
 
   auto it_d = frame.distance().begin();
   auto it_a = frame.amplitude().begin();
@@ -640,8 +628,8 @@ void ToFSensor::publish_pointCloud(const tofcore::Measurement_T &frame, rclcpp::
     it_d += 1;
   }
   //This is dumb and redundant but I don't want to break rviz viewer
-  pub.publish(cloud_msg.point_cloud);
-  cust_pub.publish(cloud_msg);
+  pub.publish(cloud_msg);
+  cust_pub.publish(integration_msg);
 }
 
 
@@ -702,7 +690,7 @@ void ToFSensor::updateFrame(const tofcore::Measurement_T &frame)
   {
     publish_amplData(frame, *pub_amplitude_, stamp);
     publish_distData(frame, *pub_distance_, stamp);
-    publish_pointCloud(frame, *pub_pcd_, *pub_cust_pcd_, stamp);
+    publish_pointCloud(frame, *pub_pcd_, *pub_integration_, stamp);
     publish_tempData(frame, stamp);
     break;
   }
@@ -716,7 +704,7 @@ void ToFSensor::updateFrame(const tofcore::Measurement_T &frame)
   case tofcore::Measurement_T::DataType::DISTANCE:
   {
     publish_distData(frame, *pub_distance_, stamp);
-    publish_pointCloud(frame, *pub_pcd_, *pub_cust_pcd_, stamp);
+    publish_pointCloud(frame, *pub_pcd_, *pub_integration_, stamp);
     publish_tempData(frame, stamp);
     break;
   }

@@ -10,14 +10,17 @@
 #include <functional>
 #include <memory>
 #include <string>
+#include <vector>
+#include <optional>
 
 #include <rclcpp/rclcpp.hpp>
 #include <sensor_msgs/msg/point_cloud2.hpp>
 #include <sensor_msgs/msg/image.hpp>
 #include <sensor_msgs/point_cloud2_iterator.hpp>
 #include <sensor_msgs/msg/temperature.hpp>
-#include <tofcore_msgs/msg/tofcore_point_cloud2.hpp>
+#include <sensor_msgs/image_encodings.hpp>
 
+#include <tofcore_msgs/msg/integration_time.hpp>
 
 /// ToFSensor ROS2 node class for interacting with a PreAct ToF sensor/camera
 class ToFSensor : public rclcpp::Node
@@ -26,14 +29,14 @@ class ToFSensor : public rclcpp::Node
     rclcpp::Publisher<sensor_msgs::msg::Image>::SharedPtr pub_ambient_;
     rclcpp::Publisher<sensor_msgs::msg::Image>::SharedPtr pub_distance_;
     rclcpp::Publisher<sensor_msgs::msg::Image>::SharedPtr pub_amplitude_;
-    rclcpp::Publisher<tofcore_msgs::msg::TofcorePointCloud2>::SharedPtr pub_cust_pcd_;
+    rclcpp::Publisher<tofcore_msgs::msg::IntegrationTime>::SharedPtr pub_integration_;
     rclcpp::Publisher<sensor_msgs::msg::PointCloud2>::SharedPtr pub_pcd_;
     std::array<rclcpp::Publisher<sensor_msgs::msg::Image>::SharedPtr, 4> pub_dcs_;
     rclcpp::Publisher<sensor_msgs::msg::Temperature>::SharedPtr sensor_temperature_tl;
     rclcpp::Publisher<sensor_msgs::msg::Temperature>::SharedPtr sensor_temperature_tr;
     rclcpp::Publisher<sensor_msgs::msg::Temperature>::SharedPtr sensor_temperature_bl;
     rclcpp::Publisher<sensor_msgs::msg::Temperature>::SharedPtr sensor_temperature_br;
-
+        
     std::unique_ptr<tofcore::Sensor> interface_;
     tofcore::CartesianTransform cartesianTransform_;
     std::string sensor_location_;
@@ -61,7 +64,7 @@ class ToFSensor : public rclcpp::Node
     void publish_distData(const tofcore::Measurement_T& frame, rclcpp::Publisher<sensor_msgs::msg::Image>& pub, const rclcpp::Time& stamp);
 
     /// Publish a PointCloud using distance data in frame to the topic publisher pub with timestamp stamp.
-    void publish_pointCloud(const tofcore::Measurement_T& frame, rclcpp::Publisher<sensor_msgs::msg::PointCloud2>& pub, rclcpp::Publisher<tofcore_msgs::msg::TofcorePointCloud2>& cust_pub, const rclcpp::Time& stamp);
+    void publish_pointCloud(const tofcore::Measurement_T& frame, rclcpp::Publisher<sensor_msgs::msg::PointCloud2>& pub, rclcpp::Publisher<tofcore_msgs::msg::IntegrationTime>& cust_pub, const rclcpp::Time& stamp);
     
     /// Publish a dcs data in frame to the four dcs topic publishers with timestamp stamp.
     void publish_DCSData(const tofcore::Measurement_T &frame, const rclcpp::Time& stamp);

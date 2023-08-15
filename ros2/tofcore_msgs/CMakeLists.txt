@@ -18,7 +18,7 @@ find_package(std_msgs REQUIRED)
 find_package(sensor_msgs REQUIRED)
 
 rosidl_generate_interfaces(${PROJECT_NAME}
-  "msg/TofcorePointCloud2.msg"
+  "msg/IntegrationTime.msg"
   DEPENDENCIES std_msgs sensor_msgs #builtin_interfaces
  )
 

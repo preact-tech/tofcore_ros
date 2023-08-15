@@ -72,7 +72,7 @@ bridge: build ##	Build the ROS1 bridge, build environment must have both ROS1 an
 
 .PHONY: clean
 clean:
-	rm -rf build install log ros2/build ros2/install ros2/log ros1/build ros1/install ros1/log
+	rm -rf build install log ros2/build ros2/install ros2/log ros1/build ros1/tofcore_ros/build ros1/install ros1/log
 	rm -r -f build
 	rm -r -f dist
 	rm -r -f install
