@@ -47,7 +47,7 @@ bool begins_with(const std::string& needle, const std::string& haystack )
 
 
 ToFSensor::ToFSensor()
-    : Node("tof_sensor", "tofcore")
+    : Node("tof_sensor", "truesense")
 {
   rclcpp::QoS pub_qos(10);
   pub_qos.reliability(rclcpp::ReliabilityPolicy::Reliable);

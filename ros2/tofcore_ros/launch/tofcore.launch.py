@@ -12,7 +12,7 @@ import yaml
 def launch_setup(context, *args, **kwargs):
 
     ts_camera = Node(
-        package="tofcore",
+        package="truesense",
         executable='tof_sensor',
         output='screen',
         parameters=[{'stream_type': "distance_amplitude"}],
@@ -73,7 +73,7 @@ def launch_setup(context, *args, **kwargs):
     return retval
 
 def generate_launch_description():
-    pkg_share = FindPackageShare(package='tofcore').find('tofcore')
+    pkg_share = FindPackageShare(package='truesense').find('truesense')
     default_rviz_config_path = os.path.join(pkg_share, 'rviz2/tofcore_basic_cloud.rviz')
     default_ae_config_path = os.path.join(pkg_share, 'config/ae_params.yaml')
 
