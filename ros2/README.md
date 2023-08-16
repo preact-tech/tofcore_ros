@@ -26,6 +26,6 @@ source ./install/setup.bash
 One can quickly view a pointcloud generated from distance data generated on the device using the `tofcore.launch.py` launch file like so: 
 
 ```
-ros2 launch tofcore tofcore.launch.py
-ros2 launch tofcore tofcore.launch.py with_ae:=true
+ros2 launch truesense tofcore.launch.py
+ros2 launch truesense tofcore.launch.py with_ae:=true
 ```

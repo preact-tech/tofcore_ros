@@ -18,8 +18,9 @@ find_package(std_msgs REQUIRED)
 find_package(sensor_msgs REQUIRED)
 
 rosidl_generate_interfaces(${PROJECT_NAME}
-  "msg/IntegrationTime.msg"
-  DEPENDENCIES std_msgs sensor_msgs #builtin_interfaces
+"msg/IntegrationTime.msg"
+"msg/Frame.msg"
+DEPENDENCIES std_msgs sensor_msgs #builtin_interfaces
  )
 
 if(BUILD_TESTING)
