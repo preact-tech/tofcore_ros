@@ -26,7 +26,7 @@ provision:
 	vcs --nested custom --git --args show
 	rm -rf ros2/tofcore_ros/libtofcore ros1/tofcore_ros/libtofcore
 	cd ros2 && ln -fs ../../libtofcore tofcore_ros/libtofcore
-	ln -fs ../algorithm ros2/algorithm
+	# ln -fs ../algorithm ros2/algorithm
 
 .PHONY: provision_bridge
 provision_bridge: provision ##	Install required tools, packages and git repos to build the truenense package as well as the ROS bridge package
@@ -92,6 +92,5 @@ clean:
 	rm -r -f *.zsync
 .PHONY: clobber
 clobber: clean
-	rm -rf libtofcore ros2/tofcore_ros/libtofcore
-	rm -rf libtofcore ros1/tofcore_ros/libtofcore
+	rm -rf libtofcore ros2/tofcore_ros/libtofcore ros1/tofcore_ros/libtofcore algorithm ros2/algorithm
 	rm -r -f ros1_bridge
