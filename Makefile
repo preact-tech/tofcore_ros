@@ -26,7 +26,7 @@ provision:
 	vcs --nested custom --git --args show
 	rm -rf ros2/tofcore_ros/libtofcore ros1/tofcore_ros/libtofcore
 	cd ros2 && ln -fs ../../libtofcore tofcore_ros/libtofcore
-	cd ros1 && ln -fs ../../libtofcore tofcore_ros/libtofcore
+	ln -fs ../algorithm ros2/algorithm
 
 .PHONY: provision_bridge
 provision_bridge: provision ##	Install required tools, packages and git repos to build the truenense package as well as the ROS bridge package
@@ -40,7 +40,8 @@ provision_ros1: provision ##	Install required tools, packages and git repos to b
 	sudo sh -c 'echo "deb http://packages.ros.org/ros/ubuntu $(TARGET_DISTRO_VER) main" > /etc/apt/sources.list.d/ros-noetic.list'
 	curl -s https://raw.githubusercontent.com/ros/rosdistro/master/ros.asc | sudo apt-key add -
 	sudo apt update && sudo apt install -y ros-noetic-desktop-full python3-catkin-pkg
-	
+	cd ros1 && ln -fs ../../libtofcore tofcore_ros/libtofcore
+
 
 tofcore_msgs_deb: ##	Build the tofcore_msgs ROS2 package as a debian package
 	rosdep update --include-eol-distros
@@ -58,8 +59,8 @@ tofcore_deb: tofcore_msgs_deb ##	Build the truensense ROS2 package as a debian p
 
 .PHONY: build
 build:
-	 cd ros2 && colcon build --packages-skip ros1_bridge 
-
+	 cd ros2 && colcon build --packages-skip ros1_bridge preact_alg detection_py lens_calibration
+	 
 .PHONY: ros1
 ros1:
 	 cd ros1 &&  source /opt/ros/noetic/setup.bash && colcon build

@@ -43,7 +43,7 @@ target_link_libraries(tof_sensor tofcore)
 install(TARGETS tof_sensor
   DESTINATION lib/${PROJECT_NAME})
 
-install(DIRECTORY launch rviz2
+install(DIRECTORY launch rviz2 config
   DESTINATION share/${PROJECT_NAME}
 )
 

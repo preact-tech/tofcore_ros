@@ -4,7 +4,10 @@ from launch_ros.actions import Node
 from launch_ros.substitutions import FindPackageShare
 from launch.actions import Shutdown, DeclareLaunchArgument, OpaqueFunction
 import os
+import yaml
 
+# pkg_demo_share = launch_ros.substitutions.FindPackageShare(
+#             package='tofcore_ros').find('tofcore_ros')
 
 def launch_setup(context, *args, **kwargs):
 
@@ -33,8 +36,7 @@ def launch_setup(context, *args, **kwargs):
         output="screen",
         on_exit=Shutdown()
     )
-
-
+    
 
     retval = [ ts_camera,  rviz, rqt_node]
 
@@ -47,26 +49,54 @@ def launch_setup(context, *args, **kwargs):
             on_exit=Shutdown()
         ))
 
+    if LaunchConfiguration('with_ae').perform(context).lower() == 'true':
+        param_setting = launch.substitutions.LaunchConfiguration('aeconfig').perform(context)
+        # if param_setting.lower() == "default":
+        #     params_path = os.path.join(pkg_demo_share, 'config', 'sahara_params.yaml')
+        # else:
+        params_path = param_setting
+
+        with open(params_path, "r") as fid:
+            all_params = yaml.safe_load(fid)
+        
+        ae_params = all_params["/automatic_exposure"]["ros__parameters"]
+        retval.append(Node(
+            package='controls_py',
+            executable='automatic_exposure',
+            name='automatic_exposure',
+            output='screen',
+            parameters=[ae_params],
+            #condition=launch.conditions.IfCondition(LaunchConfiguration('auto-exposure')),
+            on_exit=Shutdown()
+        ))
 
     return retval
 
 def generate_launch_description():
     pkg_share = FindPackageShare(package='tofcore').find('tofcore')
     default_rviz_config_path = os.path.join(pkg_share, 'rviz2/tofcore_basic_cloud.rviz')
+    default_ae_config_path = os.path.join(pkg_share, 'config/ae_params.yaml')
 
     rvizconfig = DeclareLaunchArgument(
         name='rvizconfig',
         default_value=default_rviz_config_path,
         description='Absolute path to rviz config file')
-
+    
+    aeconfig = DeclareLaunchArgument(
+        name='aeconfig',
+        default_value=default_ae_config_path,
+        description='Absolute path to ae config file')
   
     with_ros1_bridge = DeclareLaunchArgument(name='with_ros1_bridge', default_value='false',
                               description='Launch a ROS1 to ROS2 bridge with other nodes')
 
-
+    with_ae = DeclareLaunchArgument(name='with_ae', default_value='false',
+                              description='Launch automatic exposure node')
 
     return launch.LaunchDescription([
         rvizconfig,
         with_ros1_bridge,
+        aeconfig,
+        with_ae,
         OpaqueFunction(function=launch_setup)
     ])

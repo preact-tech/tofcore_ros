@@ -27,4 +27,5 @@ One can quickly view a pointcloud generated from distance data generated on the 
 
 ```
 ros2 launch tofcore tofcore.launch.py
+ros2 launch tofcore tofcore.launch.py with_ae:=true
 ```
