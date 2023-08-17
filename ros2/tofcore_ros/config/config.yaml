@@ -3,10 +3,12 @@
     modulation_frequency: 8.0
     frame_rate: 30
 
-/truesense/truesense_processor:
+/truesense/tof_sensor:
   ros__parameters:
     flip_horizontal: true
     flip_vertical: true
+    desired_location: Unknown
+    stream_type: distance_amplitude
 
 /automatic_exposure:
   ros__parameters:

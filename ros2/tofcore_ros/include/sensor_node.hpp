@@ -3,6 +3,8 @@
 
 #include <cstdio>
 
+#include <discovery.hpp>
+
 #include <tofcore/tof_sensor.hpp>
 #include <tofcore/cartesian_transform.hpp>
 
@@ -40,6 +42,7 @@ class ToFSensor : public rclcpp::Node
     std::unique_ptr<tofcore::Sensor> interface_;
     tofcore::CartesianTransform cartesianTransform_;
     std::string sensor_location_;
+    ToFDiscovery discovery_helper_;
 
   public:
     /// Standard constructor

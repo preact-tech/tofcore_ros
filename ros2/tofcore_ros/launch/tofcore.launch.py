@@ -10,12 +10,19 @@ import yaml
 #             package='tofcore_ros').find('tofcore_ros')
 
 def launch_setup(context, *args, **kwargs):
+    param_setting = launch.substitutions.LaunchConfiguration('config').perform(context)
 
+    params_path = param_setting
+
+    with open(params_path, "r") as fid:
+        all_params = yaml.safe_load(fid)
+            
+    tof_params = all_params["/truesense/tof_sensor"]["ros__parameters"]
     ts_camera = Node(
         package="truesense",
         executable='tof_sensor',
         output='screen',
-        parameters=[{'stream_type': "distance_amplitude"}],
+        parameters=[tof_params],
         on_exit=Shutdown()
     )
 
@@ -50,14 +57,7 @@ def launch_setup(context, *args, **kwargs):
         ))
 
     if LaunchConfiguration('with_ae').perform(context).lower() == 'true':
-        param_setting = launch.substitutions.LaunchConfiguration('aeconfig').perform(context)
-        # if param_setting.lower() == "default":
-        #     params_path = os.path.join(pkg_demo_share, 'config', 'sahara_params.yaml')
-        # else:
-        params_path = param_setting
 
-        with open(params_path, "r") as fid:
-            all_params = yaml.safe_load(fid)
         
         ae_params = all_params["/automatic_exposure"]["ros__parameters"]
         retval.append(Node(
@@ -75,16 +75,16 @@ def launch_setup(context, *args, **kwargs):
 def generate_launch_description():
     pkg_share = FindPackageShare(package='truesense').find('truesense')
     default_rviz_config_path = os.path.join(pkg_share, 'rviz2/tofcore_basic_cloud.rviz')
-    default_ae_config_path = os.path.join(pkg_share, 'config/ae_params.yaml')
+    defaul_config_path = os.path.join(pkg_share, 'config/config.yaml')
 
     rvizconfig = DeclareLaunchArgument(
         name='rvizconfig',
         default_value=default_rviz_config_path,
         description='Absolute path to rviz config file')
     
-    aeconfig = DeclareLaunchArgument(
-        name='aeconfig',
-        default_value=default_ae_config_path,
+    config = DeclareLaunchArgument(
+        name='config',
+        default_value=defaul_config_path,
         description='Absolute path to ae config file')
   
     with_ros1_bridge = DeclareLaunchArgument(name='with_ros1_bridge', default_value='false',
@@ -96,7 +96,7 @@ def generate_launch_description():
     return launch.LaunchDescription([
         rvizconfig,
         with_ros1_bridge,
-        aeconfig,
+        config,
         with_ae,
         OpaqueFunction(function=launch_setup)
     ])

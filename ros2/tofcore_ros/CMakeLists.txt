@@ -28,8 +28,8 @@ if(NOT TARGET ToFCore::ToFCore)
   endif()
 endif()
 
-
-add_executable(tof_sensor src/sensor_node.cpp src/main.cpp)
+##Sensor Node
+add_executable(tof_sensor src/discovery.cpp src/sensor_node.cpp src/main.cpp)
 target_include_directories(tof_sensor PUBLIC
   $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
   $<INSTALL_INTERFACE:include>
@@ -37,10 +37,9 @@ target_include_directories(tof_sensor PUBLIC
 target_compile_features(tof_sensor PUBLIC c_std_99 cxx_std_17)  # Require C99 and C++17
 ament_target_dependencies(tof_sensor rclcpp std_msgs sensor_msgs tofcore_msgs)
 target_link_libraries(tof_sensor tofcore)
-# rosidl_target_interfaces(tof_sensor
-#   ${PROJECT_NAME} "rosidl_typesupport_cpp")
 
-install(TARGETS tof_sensor
+
+install(TARGETS tof_sensor 
   DESTINATION lib/${PROJECT_NAME})
 
 install(DIRECTORY launch rviz2 config
