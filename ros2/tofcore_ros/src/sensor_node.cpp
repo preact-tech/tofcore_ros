@@ -49,24 +49,6 @@ ToFSensor::ToFSensor()
   rcl_interfaces::msg::ParameterDescriptor readonly_descriptor;
   readonly_descriptor.read_only = true;
 
-  // Setup topic pulbishers
-  pub_ambient_ = this->create_publisher<sensor_msgs::msg::Image>("ambient", pub_qos);
-  pub_distance_ = this->create_publisher<sensor_msgs::msg::Image>("depth", pub_qos); // renamed this from distance to depth to match truesense node
-  pub_amplitude_ = this->create_publisher<sensor_msgs::msg::Image>("amplitude", pub_qos);
-  pub_pcd_ = this->create_publisher<sensor_msgs::msg::PointCloud2>("points", pub_qos);
-  pub_integration_ = this->create_publisher<tofcore_msgs::msg::IntegrationTime>("frame_raw", pub_qos);
-
-  for (size_t i = 0; i != pub_dcs_.size(); i++)
-  {
-    std::string topic{"dcs"};
-    topic += std::to_string(i);
-    pub_dcs_[i] = this->create_publisher<sensor_msgs::msg::Image>(topic, pub_qos);
-  }
-
-  sensor_temperature_tl = this->create_publisher<sensor_msgs::msg::Temperature>("sensor_temperature_tl", pub_qos);
-  sensor_temperature_tr = this->create_publisher<sensor_msgs::msg::Temperature>("sensor_temperature_tr", pub_qos);
-  sensor_temperature_bl = this->create_publisher<sensor_msgs::msg::Temperature>("sensor_temperature_bl", pub_qos);
-  sensor_temperature_br = this->create_publisher<sensor_msgs::msg::Temperature>("sensor_temperature_br", pub_qos);
 
   // Device discovery stuff
   this->declare_parameter(DESIRED_LOCATION,"-1");
@@ -152,6 +134,29 @@ ToFSensor::ToFSensor()
   // Setup a callback so that we can react to parameter changes from the outside world.
   parameters_callback_handle_ = this->add_on_set_parameters_callback(
       std::bind(&ToFSensor::on_set_parameters_callback, this, std::placeholders::_1));
+
+
+  // Setup topic pulbishers
+  pub_ambient_ = this->create_publisher<sensor_msgs::msg::Image>("ambient", pub_qos);
+  pub_distance_ = this->create_publisher<sensor_msgs::msg::Image>("depth", pub_qos); // renamed this from distance to depth to match truesense node
+  pub_amplitude_ = this->create_publisher<sensor_msgs::msg::Image>("amplitude", pub_qos);
+  pub_pcd_ = this->create_publisher<sensor_msgs::msg::PointCloud2>("points_"+this->sensor_location_, pub_qos);
+  pub_integration_ = this->create_publisher<tofcore_msgs::msg::IntegrationTime>("frame_raw", pub_qos);
+
+  for (size_t i = 0; i != pub_dcs_.size(); i++)
+  {
+    std::string topic{"dcs"};
+    topic += std::to_string(i);
+    pub_dcs_[i] = this->create_publisher<sensor_msgs::msg::Image>(topic, pub_qos);
+  }
+
+  sensor_temperature_tl = this->create_publisher<sensor_msgs::msg::Temperature>("sensor_temperature_tl", pub_qos);
+  sensor_temperature_tr = this->create_publisher<sensor_msgs::msg::Temperature>("sensor_temperature_tr", pub_qos);
+  sensor_temperature_bl = this->create_publisher<sensor_msgs::msg::Temperature>("sensor_temperature_bl", pub_qos);
+  sensor_temperature_br = this->create_publisher<sensor_msgs::msg::Temperature>("sensor_temperature_br", pub_qos);
+
+
+
 
   // Update all parameters
   auto params = this->get_parameters(this->list_parameters({}, 1).names);

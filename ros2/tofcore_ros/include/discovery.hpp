@@ -25,7 +25,7 @@ struct SensorConnectionInfo
   std::string uri;
   bool usb_conn;
 };
-/// ToFDiscovery ROS2 node class for interacting with a PreAct ToF sensor/camera
+/// ToFDiscovery class for finding connected PreAct ToF sensor/camera
 class ToFDiscovery 
 {
 private:
@@ -38,7 +38,6 @@ public:
 
 private:
 
-  /// Publish received temperature data in frame to the to four different temperature topics (pub_temps_) with timestamp stamp.
   void discover(std::vector<tofcore::device_info_t> &device_info_list, std::vector<SensorConnectionInfo> &sensor_list);
 
 public:
