@@ -39,10 +39,9 @@ bool begins_with(const std::string &needle, const std::string &haystack)
   return haystack.rfind(needle, 0) == 0;
 }
 
-ToFSensor::ToFSensor()
+ToFSensor::ToFSensor(ToFDiscovery discovery_helper_)
     : Node("tof_sensor", "truesense")
 {
-  
   rclcpp::QoS pub_qos(10);
   pub_qos.reliability(rclcpp::ReliabilityPolicy::Reliable);
   pub_qos.durability(rclcpp::DurabilityPolicy::TransientLocal);
@@ -52,14 +51,12 @@ ToFSensor::ToFSensor()
 
 
   // Device discovery stuff
-    //this->discovery_helper_ = std::make_shared<ToFDiscovery>();
-
   this->declare_parameter(DESIRED_LOCATION,"-1");
   rclcpp::Parameter loc_to_find;
   (void)this->get_parameter(DESIRED_LOCATION, loc_to_find);
   if (loc_to_find.as_string()!="-1") //TODO: Find smarter way to do this check. We can decalre parameter without value and will get "not set" when querying, not sure how to leverage this?
   {
-    std::optional<SensorConnectionInfo> found_sensor = this->discovery_helper_->find_device_location(loc_to_find.as_string());
+    std::optional<SensorConnectionInfo> found_sensor = discovery_helper_.find_device_location(loc_to_find.as_string());
     if (found_sensor)
     {
       interface_.reset(new tofcore::Sensor(1, (*found_sensor).uri));
@@ -69,13 +66,13 @@ ToFSensor::ToFSensor()
     else
     {
       RCLCPP_INFO(this->get_logger(), "No device located at \"%s\" reverting to default uri: \"%s\"", loc_to_find.as_string().c_str(), "/dev/ttyACM0");
-      //interface_.reset(new tofcore::Sensor(1, "/dev/ttyACM0"));
+      interface_.reset(new tofcore::Sensor(1, "/dev/ttyACM0"));
       this->declare_parameter(SENSOR_URL, "/dev/ttyACM0", readonly_descriptor);
     }
   }
   else
   {
-   // interface_.reset(new tofcore::Sensor(1, "/dev/ttyACM0"));
+    interface_.reset(new tofcore::Sensor(1, "/dev/ttyACM0"));
     RCLCPP_INFO(this->get_logger(), "No location provided, using default device connection uri: \"%s\"", "/dev/ttyACM0");
     this->declare_parameter(SENSOR_URL, "/dev/ttyACM0", readonly_descriptor);
   }

@@ -3,13 +3,19 @@
     modulation_frequency: 8.0
     frame_rate: 30
 
-/truesense/tof_sensor:
+/truesense/tof_sensor_rear:
   ros__parameters:
     flip_horizontal: true
     flip_vertical: true
     desired_location: rear
     stream_type: distance_amplitude
 
+/truesense/tof_sensor_left:
+  ros__parameters:
+    flip_horizontal: true
+    flip_vertical: true
+    desired_location: left
+    stream_type: distance_amplitude
 /automatic_exposure:
   ros__parameters:
     ae_aw_gain: 0.0

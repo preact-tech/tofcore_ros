@@ -6,6 +6,8 @@ using namespace std::string_literals;
 ToFDiscovery::ToFDiscovery()
 
 {
+      std::cout << "creating discovery helper: "<<std::endl;
+
   this->discover(this->device_info_list, this->sensor_list);
 }
 

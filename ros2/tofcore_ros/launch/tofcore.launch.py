@@ -17,15 +17,24 @@ def launch_setup(context, *args, **kwargs):
     with open(params_path, "r") as fid:
         all_params = yaml.safe_load(fid)
             
-    tof_params = all_params["/truesense/tof_sensor"]["ros__parameters"]
-    ts_camera = Node(
+    tof_params_rear = all_params["/truesense/tof_sensor_rear"]["ros__parameters"]
+    ts_camera_rear = Node(
         package="truesense",
         executable='tof_sensor',
+        name='tof_sensor_rear',
         output='screen',
-        parameters=[tof_params],
+        parameters=[tof_params_rear],
         on_exit=Shutdown()
     )
-
+    tof_params_left = all_params["/truesense/tof_sensor_left"]["ros__parameters"]
+    ts_camera_left = Node(
+        package="truesense",
+        executable='tof_sensor',
+        name='tof_sensor_left',
+        output='screen',
+        parameters=[tof_params_left],
+        on_exit=Shutdown()
+    )
     rviz = Node(
         package='rviz2',
         executable='rviz2',
@@ -45,7 +54,7 @@ def launch_setup(context, *args, **kwargs):
     )
     
 
-    retval = [ ts_camera,  rviz, rqt_node]
+    retval = [ ts_camera_rear, ts_camera_left,  rviz, rqt_node]
 
     if LaunchConfiguration('with_ros1_bridge').perform(context).lower() == 'true':
         retval.append( Node(
