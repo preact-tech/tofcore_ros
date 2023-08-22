@@ -42,11 +42,11 @@ class ToFSensor : public rclcpp::Node
     std::unique_ptr<tofcore::Sensor> interface_;
     tofcore::CartesianTransform cartesianTransform_;
     std::string sensor_location_;
+    ToFDiscovery discovery_helper_;
 
   public:
     /// Standard constructor
     ToFSensor();
-    static ToFDiscovery discovery_helper_;
 
   private:
     /// Callback method to be called when a parameter is changed.
