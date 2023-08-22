@@ -42,6 +42,7 @@ bool begins_with(const std::string &needle, const std::string &haystack)
 ToFSensor::ToFSensor()
     : Node("tof_sensor", "truesense")
 {
+  
   rclcpp::QoS pub_qos(10);
   pub_qos.reliability(rclcpp::ReliabilityPolicy::Reliable);
   pub_qos.durability(rclcpp::DurabilityPolicy::TransientLocal);
@@ -51,6 +52,8 @@ ToFSensor::ToFSensor()
 
 
   // Device discovery stuff
+    this->discovery_helper_ = std::make_shared<ToFDiscovery>();
+
   this->declare_parameter(DESIRED_LOCATION,"-1");
   rclcpp::Parameter loc_to_find;
   (void)this->get_parameter(DESIRED_LOCATION, loc_to_find);
