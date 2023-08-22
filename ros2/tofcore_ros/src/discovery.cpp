@@ -30,6 +30,7 @@ void ToFDiscovery::discover(std::vector<tofcore::device_info_t> &device_info_lis
       tempSensor.name = *init_name;
     else
       continue;
+    std::cout << "Sensor Location: "<< *init_location <<std::endl;
 
     if (init_location)
       tempSensor.location = *init_location;
