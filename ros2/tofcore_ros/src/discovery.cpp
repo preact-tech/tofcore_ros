@@ -12,6 +12,9 @@ ToFDiscovery::ToFDiscovery()
 /// Publish received temperature data in frame to the to four different temperature topics (pub_temps_) with timestamp stamp.
 void ToFDiscovery::discover(std::vector<tofcore::device_info_t> &device_info_list, std::vector<SensorConnectionInfo> &sensor_list)
 {
+  if(this->is_init)
+    break;
+  this->is_init=true;
   device_info_list = tofcore::find_all_devices();
   std::unique_ptr<tofcore::Sensor> interface_;
   std::string usb_str = "/dev/ttyACM";
