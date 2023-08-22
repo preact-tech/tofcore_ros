@@ -4,7 +4,6 @@ using namespace std::chrono_literals;
 using namespace std::string_literals;
 
 ToFDiscovery::ToFDiscovery()
-
 {
   this->discover( this->sensor_list);
 }

@@ -38,7 +38,7 @@ private:
 
 public:
   /// Standard constructor
-  ToFDiscovery();
+  static ToFDiscovery();
 
 private:
 
