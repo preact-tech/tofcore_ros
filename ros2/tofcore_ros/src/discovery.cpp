@@ -68,6 +68,7 @@ std::optional<SensorConnectionInfo> ToFDiscovery::find_device_name(std::string n
 }
 std::optional<SensorConnectionInfo> ToFDiscovery::find_device_location(std::string location)
 {
+  this->sensor_list.clear();
   device_info_list = tofcore::find_all_devices();
   std::unique_ptr<tofcore::Sensor> interface_;
   std::string usb_str = "/dev/ttyACM";
@@ -105,9 +106,9 @@ std::optional<SensorConnectionInfo> ToFDiscovery::find_device_location(std::stri
       tempSensor.if_addr = boost::asio::ip::address::from_string("127.0.0.1", ec);
       tempSensor.if_index = 0;
     }
-    sensor_list.push_back(tempSensor);
+    this->sensor_list.push_back(tempSensor);
   }
-  
+
   for (auto &sensor : this->sensor_list)
   {
     if (sensor.location == location)
