@@ -7,7 +7,7 @@
   ros__parameters:
     flip_horizontal: true
     flip_vertical: true
-    desired_location: Unknown
+    desired_location: rear
     stream_type: distance_amplitude
 
 /automatic_exposure:

@@ -52,7 +52,7 @@ ToFSensor::ToFSensor()
 
 
   // Device discovery stuff
-    this->discovery_helper_ = std::make_shared<ToFDiscovery>();
+    //this->discovery_helper_ = std::make_shared<ToFDiscovery>();
 
   this->declare_parameter(DESIRED_LOCATION,"-1");
   rclcpp::Parameter loc_to_find;
@@ -69,13 +69,13 @@ ToFSensor::ToFSensor()
     else
     {
       RCLCPP_INFO(this->get_logger(), "No device located at \"%s\" reverting to default uri: \"%s\"", loc_to_find.as_string().c_str(), "/dev/ttyACM0");
-      interface_.reset(new tofcore::Sensor(1, "/dev/ttyACM0"));
+      //interface_.reset(new tofcore::Sensor(1, "/dev/ttyACM0"));
       this->declare_parameter(SENSOR_URL, "/dev/ttyACM0", readonly_descriptor);
     }
   }
   else
   {
-    interface_.reset(new tofcore::Sensor(1, "/dev/ttyACM0"));
+   // interface_.reset(new tofcore::Sensor(1, "/dev/ttyACM0"));
     RCLCPP_INFO(this->get_logger(), "No location provided, using default device connection uri: \"%s\"", "/dev/ttyACM0");
     this->declare_parameter(SENSOR_URL, "/dev/ttyACM0", readonly_descriptor);
   }

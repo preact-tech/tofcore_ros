@@ -42,7 +42,7 @@ class ToFSensor : public rclcpp::Node
     std::unique_ptr<tofcore::Sensor> interface_;
     tofcore::CartesianTransform cartesianTransform_;
     std::string sensor_location_;
-    std::shared_ptr<ToFDiscovery> discovery_helper_;// = std::make_shared<ToFDiscovery>();
+    std::shared_ptr<ToFDiscovery> discovery_helper_ = std::make_shared<ToFDiscovery>();
 
   public:
     /// Standard constructor
