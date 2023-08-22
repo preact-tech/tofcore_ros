@@ -65,12 +65,7 @@ ToFSensor::ToFSensor()
         RCLCPP_INFO(this->get_logger(), "Using device located at \"%s\" connection uri: \"%s\"", loc_to_find.as_string().c_str(), (*found_sensor).uri.c_str());
         this->declare_parameter(SENSOR_URL, (*found_sensor).uri, readonly_descriptor);
       }
-      else
-      {
-         RCLCPP_INFO(this->get_logger(), "No device located at \"%s\" trying again: \"%s\"", loc_to_find.as_string().c_str());
-        // interface_.reset(new tofcore::Sensor(1, "/dev/ttyACM0"));
-        // this->declare_parameter(SENSOR_URL, "/dev/ttyACM0", readonly_descriptor);
-      }
+      sleep(2);
     }
   }
   else
