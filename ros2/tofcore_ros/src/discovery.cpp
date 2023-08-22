@@ -68,7 +68,7 @@ std::optional<SensorConnectionInfo> ToFDiscovery::find_device_name(std::string n
 }
 std::optional<SensorConnectionInfo> ToFDiscovery::find_device_location(std::string location)
 {
-  for (auto &sensor : this->sensor_list)
+  for (auto &sensor : *(this->sensor_list))
   {
     if (sensor.location == location)
       return sensor;
