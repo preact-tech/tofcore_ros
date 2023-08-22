@@ -56,7 +56,7 @@ ToFSensor::ToFSensor()
   (void)this->get_parameter(DESIRED_LOCATION, loc_to_find);
   if (loc_to_find.as_string()!="-1") //TODO: Find smarter way to do this check. We can decalre parameter without value and will get "not set" when querying, not sure how to leverage this?
   {
-    std::optional<SensorConnectionInfo> found_sensor = this->discovery_helper_.find_device_location(loc_to_find.as_string());
+    std::optional<SensorConnectionInfo> found_sensor = this->discovery_helper_->find_device_location(loc_to_find.as_string());
     if (found_sensor)
     {
       interface_.reset(new tofcore::Sensor(1, (*found_sensor).uri));

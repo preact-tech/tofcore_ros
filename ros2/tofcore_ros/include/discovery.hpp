@@ -29,20 +29,16 @@ struct SensorConnectionInfo
 class ToFDiscovery 
 {
 private:
-  //std::shared_ptr<std::vector<tofcore::device_info_t>> device_info_list;
-  //std::shared_ptr<std::vector<SensorConnectionInfo>> sensor_list;
-
-  //std::shared_ptr<std::vector<tofcore::device_info_t>> device_info_list = std::make_shared<std::vector<tofcore::device_info_t>>();
-  std::shared_ptr<std::vector<SensorConnectionInfo>> sensor_list = std::make_shared<std::vector<SensorConnectionInfo>>();
-  std::shared_ptr<bool> is_init=std::make_shared<bool>(false);
+  std::vector<tofcore::device_info_t> device_info_list;
+  std::vector<SensorConnectionInfo> sensor_list;
 
 public:
   /// Standard constructor
-  static ToFDiscovery();
+  ToFDiscovery();
 
 private:
 
-  void discover(std::shared_ptr<std::vector<SensorConnectionInfo>> &sensor_list);
+  void discover(std::vector<tofcore::device_info_t> &device_info_list, std::vector<SensorConnectionInfo> &sensor_list);
 
 public:
   std::optional<SensorConnectionInfo> find_device_name(std::string name);

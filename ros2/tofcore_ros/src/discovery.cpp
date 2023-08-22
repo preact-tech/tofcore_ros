@@ -4,15 +4,15 @@ using namespace std::chrono_literals;
 using namespace std::string_literals;
 
 ToFDiscovery::ToFDiscovery()
+
 {
-  this->discover( this->sensor_list);
+  this->discover(this->device_info_list, this->sensor_list);
 }
 
 /// Publish received temperature data in frame to the to four different temperature topics (pub_temps_) with timestamp stamp.
-void ToFDiscovery::discover( std::shared_ptr<std::vector<SensorConnectionInfo>> &sensor_list)
+void ToFDiscovery::discover(std::vector<tofcore::device_info_t> &device_info_list, std::vector<SensorConnectionInfo> &sensor_list)
 {
-
-  auto device_info_list = tofcore::find_all_devices();
+  device_info_list = tofcore::find_all_devices();
   std::unique_ptr<tofcore::Sensor> interface_;
   std::string usb_str = "/dev/ttyACM";
   for (auto &device_info : device_info_list)
@@ -48,13 +48,13 @@ void ToFDiscovery::discover( std::shared_ptr<std::vector<SensorConnectionInfo>> 
       tempSensor.if_addr = boost::asio::ip::address::from_string("127.0.0.1", ec);
       tempSensor.if_index = 0;
     }
-    (*sensor_list).push_back(tempSensor);
+    sensor_list.push_back(tempSensor);
   }
 }
 
 std::optional<SensorConnectionInfo> ToFDiscovery::find_device_name(std::string name)
 {
-  for (auto &sensor : *(this->sensor_list))
+  for (auto &sensor : this->sensor_list)
   {
     if (sensor.name == name)
       return sensor;
@@ -65,7 +65,7 @@ std::optional<SensorConnectionInfo> ToFDiscovery::find_device_name(std::string n
 }
 std::optional<SensorConnectionInfo> ToFDiscovery::find_device_location(std::string location)
 {
-  for (auto &sensor : *(this->sensor_list))
+  for (auto &sensor : this->sensor_list)
   {
     if (sensor.location == location)
       return sensor;
