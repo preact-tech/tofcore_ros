@@ -32,7 +32,6 @@ constexpr auto BINNING = "binning";
 constexpr auto SENSOR_NAME = "sensor_name";
 constexpr auto SENSOR_LOCATION = "sensor_location";
 constexpr auto DISCOVERY_FILTER = "discovery_filter"; // TODO: Implement this
-ToFDiscovery discovery_helper_;
 
 /// Quick helper function that return true if the string haystack starts with the string needle
 bool begins_with(const std::string &needle, const std::string &haystack)
@@ -50,25 +49,28 @@ ToFSensor::ToFSensor()
   rcl_interfaces::msg::ParameterDescriptor readonly_descriptor;
   readonly_descriptor.read_only = true;
 
-
   // Device discovery stuff
-  this->declare_parameter(DESIRED_LOCATION,"-1");
+  this->declare_parameter(DESIRED_LOCATION, "-1");
   rclcpp::Parameter loc_to_find;
   (void)this->get_parameter(DESIRED_LOCATION, loc_to_find);
-  if (loc_to_find.as_string()!="-1") //TODO: Find smarter way to do this check. We can decalre parameter without value and will get "not set" when querying, not sure how to leverage this?
+  if (loc_to_find.as_string() != "-1") // TODO: Find smarter way to do this check. We can decalre parameter without value and will get "not set" when querying, not sure how to leverage this?
   {
-    std::optional<SensorConnectionInfo> found_sensor = discovery_helper_.find_device_location(loc_to_find.as_string());
-    if (found_sensor)
+    std::optional<SensorConnectionInfo> found_sensor;
+    while (!found_sensor)
     {
-      interface_.reset(new tofcore::Sensor(1, (*found_sensor).uri));
-      RCLCPP_INFO(this->get_logger(), "Using device located at \"%s\" connection uri: \"%s\"", loc_to_find.as_string().c_str(), (*found_sensor).uri.c_str());
-      this->declare_parameter(SENSOR_URL, (*found_sensor).uri, readonly_descriptor);
-    }
-    else
-    {
-      RCLCPP_INFO(this->get_logger(), "No device located at \"%s\" reverting to default uri: \"%s\"", loc_to_find.as_string().c_str(), "/dev/ttyACM0");
-      interface_.reset(new tofcore::Sensor(1, "/dev/ttyACM0"));
-      this->declare_parameter(SENSOR_URL, "/dev/ttyACM0", readonly_descriptor);
+      found_sensor = this->discovery_helper_.find_device_location(loc_to_find.as_string());
+      if (found_sensor)
+      {
+        interface_.reset(new tofcore::Sensor(1, (*found_sensor).uri));
+        RCLCPP_INFO(this->get_logger(), "Using device located at \"%s\" connection uri: \"%s\"", loc_to_find.as_string().c_str(), (*found_sensor).uri.c_str());
+        this->declare_parameter(SENSOR_URL, (*found_sensor).uri, readonly_descriptor);
+      }
+      else
+      {
+        RCLCPP_INFO(this->get_logger(), "No device located at \"%s\" reverting to default uri: \"%s\"", loc_to_find.as_string().c_str(), "/dev/ttyACM0");
+        interface_.reset(new tofcore::Sensor(1, "/dev/ttyACM0"));
+        this->declare_parameter(SENSOR_URL, "/dev/ttyACM0", readonly_descriptor);
+      }
     }
   }
   else
@@ -136,13 +138,12 @@ ToFSensor::ToFSensor()
   parameters_callback_handle_ = this->add_on_set_parameters_callback(
       std::bind(&ToFSensor::on_set_parameters_callback, this, std::placeholders::_1));
 
-
   // Setup topic pulbishers
   pub_ambient_ = this->create_publisher<sensor_msgs::msg::Image>("ambient", pub_qos);
   pub_distance_ = this->create_publisher<sensor_msgs::msg::Image>("depth", pub_qos); // renamed this from distance to depth to match truesense node
   pub_amplitude_ = this->create_publisher<sensor_msgs::msg::Image>("amplitude", pub_qos);
-  pub_pcd_ = this->create_publisher<sensor_msgs::msg::PointCloud2>("points_"+this->sensor_location_, pub_qos);
-  pub_integration_ = this->create_publisher<tofcore_msgs::msg::IntegrationTime>("frame_raw_"+this->sensor_location_, pub_qos);
+  pub_pcd_ = this->create_publisher<sensor_msgs::msg::PointCloud2>("points_" + this->sensor_location_, pub_qos);
+  pub_integration_ = this->create_publisher<tofcore_msgs::msg::IntegrationTime>("frame_raw_" + this->sensor_location_, pub_qos);
 
   for (size_t i = 0; i != pub_dcs_.size(); i++)
   {
@@ -151,13 +152,10 @@ ToFSensor::ToFSensor()
     pub_dcs_[i] = this->create_publisher<sensor_msgs::msg::Image>(topic, pub_qos);
   }
 
-  sensor_temperature_tl = this->create_publisher<sensor_msgs::msg::Temperature>("sensor_temperature_tl_"+this->sensor_location_, pub_qos);
-  sensor_temperature_tr = this->create_publisher<sensor_msgs::msg::Temperature>("sensor_temperature_tr_"+this->sensor_location_, pub_qos);
-  sensor_temperature_bl = this->create_publisher<sensor_msgs::msg::Temperature>("sensor_temperature_bl_"+this->sensor_location_, pub_qos);
-  sensor_temperature_br = this->create_publisher<sensor_msgs::msg::Temperature>("sensor_temperature_br_"+this->sensor_location_, pub_qos);
-
-
-
+  sensor_temperature_tl = this->create_publisher<sensor_msgs::msg::Temperature>("sensor_temperature_tl_" + this->sensor_location_, pub_qos);
+  sensor_temperature_tr = this->create_publisher<sensor_msgs::msg::Temperature>("sensor_temperature_tr_" + this->sensor_location_, pub_qos);
+  sensor_temperature_bl = this->create_publisher<sensor_msgs::msg::Temperature>("sensor_temperature_bl_" + this->sensor_location_, pub_qos);
+  sensor_temperature_br = this->create_publisher<sensor_msgs::msg::Temperature>("sensor_temperature_br_" + this->sensor_location_, pub_qos);
 
   // Update all parameters
   auto params = this->get_parameters(this->list_parameters({}, 1).names);

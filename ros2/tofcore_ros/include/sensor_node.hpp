@@ -46,6 +46,7 @@ class ToFSensor : public rclcpp::Node
   public:
     /// Standard constructor
     ToFSensor();
+    static ToFDiscovery discovery_helper_;
 
   private:
     /// Callback method to be called when a parameter is changed.

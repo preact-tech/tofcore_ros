@@ -31,6 +31,7 @@ class ToFDiscovery
 private:
   std::vector<tofcore::device_info_t> device_info_list;
   std::vector<SensorConnectionInfo> sensor_list;
+  std::shared_ptr<bool> is_init;
 
 public:
   /// Standard constructor
