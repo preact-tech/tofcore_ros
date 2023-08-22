@@ -32,6 +32,7 @@ constexpr auto BINNING = "binning";
 constexpr auto SENSOR_NAME = "sensor_name";
 constexpr auto SENSOR_LOCATION = "sensor_location";
 constexpr auto DISCOVERY_FILTER = "discovery_filter"; // TODO: Implement this
+ToFDiscovery discovery_helper_;
 
 /// Quick helper function that return true if the string haystack starts with the string needle
 bool begins_with(const std::string &needle, const std::string &haystack)
@@ -39,7 +40,7 @@ bool begins_with(const std::string &needle, const std::string &haystack)
   return haystack.rfind(needle, 0) == 0;
 }
 
-ToFSensor::ToFSensor(ToFDiscovery discovery_helper_)
+ToFSensor::ToFSensor()
     : Node("tof_sensor", "truesense")
 {
   rclcpp::QoS pub_qos(10);

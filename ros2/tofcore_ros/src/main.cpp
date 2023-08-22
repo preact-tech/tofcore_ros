@@ -5,9 +5,8 @@
 
 int main(int argc, char ** argv)
 {
-  static ToFDiscovery discovery_helper_;
   rclcpp::init(argc, argv);
-  rclcpp::spin(std::make_shared<ToFSensor>(discovery_helper_));
+  rclcpp::spin(std::make_shared<ToFSensor>());
   rclcpp::shutdown();
   return 0;
 }
