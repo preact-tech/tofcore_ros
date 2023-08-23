@@ -24,7 +24,7 @@ pipeline:
 provision:
 	vcs import < required.repos . --recursive
 	vcs --nested custom --git --args show
-	rm -rf ros2/tofcore_ros/libtofcore ros1/tofcore_ros/libtofcore
+	rm -rf ros2/tofcore_ros/libtofcore ros2/tofcore_discovery/libtofcore ros1/tofcore_ros/libtofcore
 	cd ros2 && ln -fs ../../libtofcore tofcore_ros/libtofcore
 	# ln -fs ../algorithm ros2/algorithm
 

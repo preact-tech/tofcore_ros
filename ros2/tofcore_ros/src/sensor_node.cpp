@@ -55,17 +55,49 @@ ToFSensor::ToFSensor()
   (void)this->get_parameter(DESIRED_LOCATION, loc_to_find);
   if (loc_to_find.as_string() != "-1") // TODO: Find smarter way to do this check. We can decalre parameter without value and will get "not set" when querying, not sure how to leverage this?
   {
-    std::optional<SensorConnectionInfo> found_sensor;
-    while (!found_sensor)
+    rclcpp::Client<tofcore_discovery::srv::DiscoveryRequest>::SharedPtr client =
+        this->create_client<tofcore_discovery::srv::DiscoveryRequest>("discovery_request");
+    RCLCPP_INFO(rclcpp::get_logger("rclcpp"), "Client created.");
+
+    auto request = std::make_shared<tofcore_discovery::srv::DiscoveryRequest::Request>();
+    request->location = loc_to_find.as_string();
+    RCLCPP_INFO(rclcpp::get_logger("rclcpp"), "request created.");
+
+    while (!client->wait_for_service(1s))
     {
-      found_sensor = this->discovery_helper_.find_device_location(loc_to_find.as_string());
-      if (found_sensor)
+      if (!rclcpp::ok())
       {
-        interface_.reset(new tofcore::Sensor(1, (*found_sensor).uri));
-        RCLCPP_INFO(this->get_logger(), "Using device located at \"%s\" connection uri: \"%s\"", loc_to_find.as_string().c_str(), (*found_sensor).uri.c_str());
-        this->declare_parameter(SENSOR_URL, (*found_sensor).uri, readonly_descriptor);
+        RCLCPP_ERROR(rclcpp::get_logger("rclcpp"), "Interrupted while waiting for the service. Exiting.");
       }
-      sleep(2);
+      RCLCPP_INFO(rclcpp::get_logger("rclcpp"), "service not available, waiting again...");
+    }
+    RCLCPP_INFO(rclcpp::get_logger("rclcpp"), "about to send requet.");
+
+    auto result = client->async_send_request(request);
+    RCLCPP_INFO(rclcpp::get_logger("rclcpp"), "sent requet.");
+
+    if (rclcpp::spin_until_future_complete(this->get_node_base_interface(), result) ==
+        rclcpp::FutureReturnCode::SUCCESS)
+    {
+      RCLCPP_INFO(rclcpp::get_logger("rclcpp"), "Found uri: %s", result.get()->uri.c_str());
+    }
+    else
+    {
+      RCLCPP_ERROR(rclcpp::get_logger("rclcpp"), "Failed to call discovery service");
+    }
+    std::string found_sensor_uri = result.get()->uri;
+
+    if (found_sensor_uri != "null")
+    {
+      interface_.reset(new tofcore::Sensor(1, found_sensor_uri));
+      RCLCPP_INFO(this->get_logger(), "Using device located at \"%s\" connection uri: \"%s\"", loc_to_find.as_string().c_str(), found_sensor_uri.c_str());
+      this->declare_parameter(SENSOR_URL, found_sensor_uri, readonly_descriptor);
+    }
+    else
+    {
+      RCLCPP_INFO(this->get_logger(), "No device located at \"%s\" ", loc_to_find.as_string().c_str());
+      // interface_.reset(new tofcore::Sensor(1, "/dev/ttyACM0"));
+      // this->declare_parameter(SENSOR_URL, "/dev/ttyACM0", readonly_descriptor);
     }
   }
   else

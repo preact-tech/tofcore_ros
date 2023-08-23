@@ -3,8 +3,6 @@
 
 #include <cstdio>
 
-#include <discovery.hpp>
-
 #include <tofcore/tof_sensor.hpp>
 #include <tofcore/cartesian_transform.hpp>
 
@@ -23,6 +21,7 @@
 #include <sensor_msgs/image_encodings.hpp>
 
 #include <tofcore_msgs/msg/integration_time.hpp>
+#include <tofcore_discovery/srv/discovery_request.hpp>
 
 /// ToFSensor ROS2 node class for interacting with a PreAct ToF sensor/camera
 class ToFSensor : public rclcpp::Node
@@ -42,7 +41,6 @@ class ToFSensor : public rclcpp::Node
     std::unique_ptr<tofcore::Sensor> interface_;
     tofcore::CartesianTransform cartesianTransform_;
     std::string sensor_location_;
-    ToFDiscovery discovery_helper_;
 
   public:
     /// Standard constructor
