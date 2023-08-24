@@ -57,13 +57,9 @@ ToFSensor::ToFSensor()
   {
     rclcpp::Client<tofcore_discovery::srv::DiscoveryRequest>::SharedPtr client =
         this->create_client<tofcore_discovery::srv::DiscoveryRequest>("discovery_request");
-    RCLCPP_INFO(rclcpp::get_logger("rclcpp"), "Client created.");
-
     auto request = std::make_shared<tofcore_discovery::srv::DiscoveryRequest::Request>();
     request->location = loc_to_find.as_string();
-    RCLCPP_INFO(rclcpp::get_logger("rclcpp"), "request created.");
-
-    while (!client->wait_for_service(1s))
+    while (!client->wait_for_service(2s))
     {
       if (!rclcpp::ok())
       {
@@ -71,23 +67,14 @@ ToFSensor::ToFSensor()
       }
       RCLCPP_INFO(rclcpp::get_logger("rclcpp"), "service not available, waiting again...");
     }
-    RCLCPP_INFO(rclcpp::get_logger("rclcpp"), "about to send requet.");
-
     auto result = client->async_send_request(request);
-    RCLCPP_INFO(rclcpp::get_logger("rclcpp"), "sent requet.");
-
-    if (rclcpp::spin_until_future_complete(this->get_node_base_interface(), result) ==
+    if (rclcpp::spin_until_future_complete(this->get_node_base_interface(), result) !=
         rclcpp::FutureReturnCode::SUCCESS)
     {
-      RCLCPP_INFO(rclcpp::get_logger("rclcpp"), "Found uri: %s", result.get()->uri.c_str());
-    }
-    else
-    {
-      RCLCPP_ERROR(rclcpp::get_logger("rclcpp"), "Failed to call discovery service");
+      RCLCPP_FATAL(rclcpp::get_logger("rclcpp"), "Failed to call discovery service");
     }
     std::string found_sensor_uri = result.get()->uri;
-
-    if (found_sensor_uri != "null")
+    if (!found_sensor_uri.empty())
     {
       interface_.reset(new tofcore::Sensor(1, found_sensor_uri));
       RCLCPP_INFO(this->get_logger(), "Using device located at \"%s\" connection uri: \"%s\"", loc_to_find.as_string().c_str(), found_sensor_uri.c_str());
@@ -95,9 +82,7 @@ ToFSensor::ToFSensor()
     }
     else
     {
-      RCLCPP_INFO(this->get_logger(), "No device located at \"%s\" ", loc_to_find.as_string().c_str());
-      // interface_.reset(new tofcore::Sensor(1, "/dev/ttyACM0"));
-      // this->declare_parameter(SENSOR_URL, "/dev/ttyACM0", readonly_descriptor);
+      RCLCPP_FATAL(this->get_logger(), "No device located at \"%s\" ", loc_to_find.as_string().c_str());
     }
   }
   else

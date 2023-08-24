@@ -12,7 +12,7 @@ int main(int argc, char ** argv)
 
   rclcpp::Service<tofcore_discovery::srv::DiscoveryRequest>::SharedPtr service =
     node->create_service<tofcore_discovery::srv::DiscoveryRequest>("discovery_request", std::bind(&ToFDiscovery::find_device_location, discovery_helper, std::placeholders::_1, std::placeholders::_2));
-  RCLCPP_INFO(rclcpp::get_logger("rclcpp"), "Ready to discovery.");
+  RCLCPP_INFO(rclcpp::get_logger("rclcpp"), "Ready to discover sensors.");
 
   rclcpp::spin(node);
   rclcpp::shutdown();

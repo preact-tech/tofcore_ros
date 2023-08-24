@@ -19,12 +19,13 @@
 
 struct SensorConnectionInfo
 {
-  boost::asio::ip::address if_addr;
+  //boost::asio::ip::address if_addr;
+  std::string if_addr;
   int32_t if_index;
   std::string name = "null";
-  std::string location;
+  std::string location= "null";
   std::string desc;
-  std::string uri;
+  std::string uri= "null";
   bool usb_conn;
 };
 /// ToFDiscovery class for finding connected PreAct ToF sensor/camera
