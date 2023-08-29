@@ -7,7 +7,7 @@
   ros__parameters:
     flip_horizontal: true
     flip_vertical: true
-    desired_location: rear
+    #desired_location: rear
     stream_type: distance_amplitude
 
 /truesense/tof_sensor_left:

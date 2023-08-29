@@ -62,7 +62,7 @@ def launch_setup(context, *args, **kwargs):
     )
     
 
-    retval = [ ts_discovery, ts_camera_rear, ts_camera_left,  rviz, rqt_node]
+    retval = [ ts_discovery, ts_camera_rear,   rviz, rqt_node]
 
     if LaunchConfiguration('with_ros1_bridge').perform(context).lower() == 'true':
         retval.append( Node(

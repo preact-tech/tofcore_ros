@@ -50,24 +50,26 @@ ToFSensor::ToFSensor()
   readonly_descriptor.read_only = true;
 
   // Device discovery stuff
+  rclcpp::Client<tofcore_discovery::srv::DiscoveryRequest>::SharedPtr client =
+      this->create_client<tofcore_discovery::srv::DiscoveryRequest>("discovery_request");
+
+  while (!client->wait_for_service(2s))
+  {
+    if (!rclcpp::ok())
+    {
+      RCLCPP_FATAL(rclcpp::get_logger("rclcpp"), "Interrupted while waiting for the service. Exiting.");
+      break;
+    }
+    RCLCPP_INFO(rclcpp::get_logger("rclcpp"), "service not available, waiting again...");
+  }
+
   this->declare_parameter(DESIRED_LOCATION, "-1");
   rclcpp::Parameter loc_to_find;
   (void)this->get_parameter(DESIRED_LOCATION, loc_to_find);
   if (loc_to_find.as_string() != "-1") // TODO: Find smarter way to do this check. We can decalre parameter without value and will get "not set" when querying, not sure how to leverage this?
   {
-    rclcpp::Client<tofcore_discovery::srv::DiscoveryRequest>::SharedPtr client =
-        this->create_client<tofcore_discovery::srv::DiscoveryRequest>("discovery_request");
     auto request = std::make_shared<tofcore_discovery::srv::DiscoveryRequest::Request>();
     request->location = loc_to_find.as_string();
-    while (!client->wait_for_service(2s))
-    {
-      if (!rclcpp::ok())
-      {
-        RCLCPP_FATAL(rclcpp::get_logger("rclcpp"), "Interrupted while waiting for the service. Exiting.");
-        break;
-      }
-      RCLCPP_INFO(rclcpp::get_logger("rclcpp"), "service not available, waiting again...");
-    }
     auto result = client->async_send_request(request);
     if (rclcpp::spin_until_future_complete(this->get_node_base_interface(), result) !=
         rclcpp::FutureReturnCode::SUCCESS)
@@ -138,7 +140,7 @@ ToFSensor::ToFSensor()
   }
   else
   {
-     this->declare_parameter(SENSOR_LOCATION, "Unknown");
+    this->declare_parameter(SENSOR_LOCATION, "Unknown");
     this->sensor_location_ = "Unknown";
   }
 
@@ -172,9 +174,8 @@ ToFSensor::ToFSensor()
   sensor_temperature_br = this->create_publisher<sensor_msgs::msg::Temperature>("sensor_temperature_br_" + this->sensor_location_, pub_qos);
 
   // Update all parameters
- auto params = this->get_parameters(this->list_parameters({}, 1).names);
- this->on_set_parameters_callback(params);
-
+  auto params = this->get_parameters(this->list_parameters({}, 1).names);
+  this->on_set_parameters_callback(params);
 }
 
 rcl_interfaces::msg::SetParametersResult ToFSensor::on_set_parameters_callback(
