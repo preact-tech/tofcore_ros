@@ -148,7 +148,6 @@ ToFSensor::ToFSensor()
     this->declare_parameter(INTEGRATION_TIME, 500);
 
   // Setup a callback so that we can react to parameter changes from the outside world.
-    RCLCPP_INFO(this->get_logger(), "Params complete");
 
   parameters_callback_handle_ = this->add_on_set_parameters_callback(
       std::bind(&ToFSensor::on_set_parameters_callback, this, std::placeholders::_1));
@@ -171,12 +170,10 @@ ToFSensor::ToFSensor()
   sensor_temperature_tr = this->create_publisher<sensor_msgs::msg::Temperature>("sensor_temperature_tr_" + this->sensor_location_, pub_qos);
   sensor_temperature_bl = this->create_publisher<sensor_msgs::msg::Temperature>("sensor_temperature_bl_" + this->sensor_location_, pub_qos);
   sensor_temperature_br = this->create_publisher<sensor_msgs::msg::Temperature>("sensor_temperature_br_" + this->sensor_location_, pub_qos);
-    RCLCPP_INFO(this->get_logger(), "pubs complete");
 
   // Update all parameters
  auto params = this->get_parameters(this->list_parameters({}, 1).names);
  this->on_set_parameters_callback(params);
-     RCLCPP_INFO(this->get_logger(), "Param update complete");
 
 }
 
