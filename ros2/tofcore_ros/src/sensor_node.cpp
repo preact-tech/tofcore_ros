@@ -63,7 +63,8 @@ ToFSensor::ToFSensor()
     {
       if (!rclcpp::ok())
       {
-        RCLCPP_ERROR(rclcpp::get_logger("rclcpp"), "Interrupted while waiting for the service. Exiting.");
+        RCLCPP_FATAL(rclcpp::get_logger("rclcpp"), "Interrupted while waiting for the service. Exiting.");
+        break;
       }
       RCLCPP_INFO(rclcpp::get_logger("rclcpp"), "service not available, waiting again...");
     }
@@ -137,7 +138,7 @@ ToFSensor::ToFSensor()
   }
   else
   {
-    this->declare_parameter(SENSOR_LOCATION, "Unknown");
+     this->declare_parameter(SENSOR_LOCATION, "Unknown");
     this->sensor_location_ = "Unknown";
   }
 
@@ -147,6 +148,8 @@ ToFSensor::ToFSensor()
     this->declare_parameter(INTEGRATION_TIME, 500);
 
   // Setup a callback so that we can react to parameter changes from the outside world.
+    RCLCPP_INFO(this->get_logger(), "Params complete");
+
   parameters_callback_handle_ = this->add_on_set_parameters_callback(
       std::bind(&ToFSensor::on_set_parameters_callback, this, std::placeholders::_1));
 
@@ -168,10 +171,13 @@ ToFSensor::ToFSensor()
   sensor_temperature_tr = this->create_publisher<sensor_msgs::msg::Temperature>("sensor_temperature_tr_" + this->sensor_location_, pub_qos);
   sensor_temperature_bl = this->create_publisher<sensor_msgs::msg::Temperature>("sensor_temperature_bl_" + this->sensor_location_, pub_qos);
   sensor_temperature_br = this->create_publisher<sensor_msgs::msg::Temperature>("sensor_temperature_br_" + this->sensor_location_, pub_qos);
+    RCLCPP_INFO(this->get_logger(), "pubs complete");
 
   // Update all parameters
-  auto params = this->get_parameters(this->list_parameters({}, 1).names);
-  this->on_set_parameters_callback(params);
+ auto params = this->get_parameters(this->list_parameters({}, 1).names);
+ this->on_set_parameters_callback(params);
+     RCLCPP_INFO(this->get_logger(), "Param update complete");
+
 }
 
 rcl_interfaces::msg::SetParametersResult ToFSensor::on_set_parameters_callback(
