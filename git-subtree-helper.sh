@@ -17,7 +17,7 @@ git checkout -b ${SOURCE_BRANCH} tofcore_ros_internal/feature/custom_message
 
 ls
 # create new staging branch from all the commits impacting "/my-chart" from source repo
-git subtree split -P . -b ${STAGING_BRANCH}
+git checkout -b ${STAGING_BRANCH}
 
 # checkout develop
 git checkout main
