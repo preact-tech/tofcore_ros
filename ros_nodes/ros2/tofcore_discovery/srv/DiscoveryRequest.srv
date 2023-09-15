@@ -1,0 +1,10 @@
+string location
+string name
+---
+string if_addr
+int32 if_index
+string name 
+string location 
+string desc
+string uri
+bool usb_conn

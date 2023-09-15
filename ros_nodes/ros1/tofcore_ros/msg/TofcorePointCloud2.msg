@@ -1,0 +1,3 @@
+std_msgs/Header header
+sensor_msgs/PointCloud2 point_cloud
+uint16 integration_time
