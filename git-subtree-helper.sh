@@ -5,15 +5,15 @@ STAGING_BRANCH="tofcore_ros_internal-staging"
 echo
 echo "Fetch new changes from tofcore_ros_internal"
 echo -----------------------------------------
-git fetch tofcore_ros_internal develop
+git fetch tofcore_ros_internal feature/custom_message
 
-TOFCORE_ROS_LATEST_COMMIT=`git ls-remote tofcore_ros_internal | grep "refs/heads/develop" | awk '{ print $1}'`
+TOFCORE_ROS_LATEST_COMMIT=`git ls-remote tofcore_ros_internal | grep "refs/heads/feature/custom_message" | awk '{ print $1}'`
 echo
 echo "tofcore_ros_internal latest commit: ${tofcore_ros_internal_LATEST_COMMIT}"
 echo
 
 # checkout source repo
-git checkout -b ${SOURCE_BRANCH} tofcore_ros_internal/develop
+git checkout -b ${SOURCE_BRANCH} tofcore_ros_internal/feature/custom_message
 
 ls
 # create new staging branch from all the commits impacting "/my-chart" from source repo
