@@ -17,7 +17,7 @@ git checkout -b ${SOURCE_BRANCH} tofcore_ros_internal/develop
 
 ls
 # create new staging branch from all the commits impacting "/my-chart" from source repo
-#git subtree split -P tofcore -b ${STAGING_BRANCH}
+git subtree split -b ${STAGING_BRANCH}
 
 # checkout develop
 git checkout main
