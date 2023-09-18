@@ -16,7 +16,7 @@ constexpr auto API_VERSION = "api_version";
 constexpr auto CHIP_ID = "chip_id";
 constexpr auto MODEL_NAME = "model_name";
 constexpr auto SW_VERSION = "sw_version";
-constexpr auto SENSOR_URL = "sensor_url";
+constexpr auto SENSOR_URI = "sensor_uri";
 constexpr auto DESIRED_LOCATION = "desired_location";
 
 // Configurable params
@@ -64,9 +64,19 @@ ToFSensor::ToFSensor()
   }
 
   this->declare_parameter(DESIRED_LOCATION, "-1");
+  this->declare_parameter(SENSOR_URI, "-1");
   rclcpp::Parameter loc_to_find;
   (void)this->get_parameter(DESIRED_LOCATION, loc_to_find);
-  if (loc_to_find.as_string() != "-1") // TODO: Find smarter way to do this check. We can decalre parameter without value and will get "not set" when querying, not sure how to leverage this?
+  rclcpp::Parameter uri_to_find;
+  (void)this->get_parameter(SENSOR_URI, uri_to_find);
+  if (uri_to_find.as_string() != "-1") // TODO: Find smarter way to do this check. We can decalre parameter without value and will get "not set" when querying, not sure how to leverage this?
+  {
+    interface_.reset(new tofcore::Sensor(1, uri_to_find.as_string()));
+    RCLCPP_INFO(this->get_logger(), "Sensor URI Provided, using device connection uri: \"%s\"", uri_to_find.as_string().c_str());
+    //rclcpp::Parameter str_param(SENSOR_URI, uri_to_find);
+    this->set_parameter(uri_to_find);
+  }
+  else if (loc_to_find.as_string() != "-1") // TODO: Find smarter way to do this check. We can decalre parameter without value and will get "not set" when querying, not sure how to leverage this?
   {
     auto request = std::make_shared<tofcore_discovery::srv::DiscoveryRequest::Request>();
     request->location = loc_to_find.as_string();
@@ -81,7 +91,8 @@ ToFSensor::ToFSensor()
     {
       interface_.reset(new tofcore::Sensor(1, found_sensor_uri));
       RCLCPP_INFO(this->get_logger(), "Using device located at \"%s\" connection uri: \"%s\"", loc_to_find.as_string().c_str(), found_sensor_uri.c_str());
-      this->declare_parameter(SENSOR_URL, found_sensor_uri, readonly_descriptor);
+      rclcpp::Parameter str_param(SENSOR_URI, found_sensor_uri);
+      this->set_parameter(str_param);
     }
     else
     {
@@ -92,11 +103,9 @@ ToFSensor::ToFSensor()
   {
     interface_.reset(new tofcore::Sensor(1, "/dev/ttyACM0"));
     RCLCPP_INFO(this->get_logger(), "No location provided, using default device connection uri: \"%s\"", "/dev/ttyACM0");
-    this->declare_parameter(SENSOR_URL, "/dev/ttyACM0", readonly_descriptor);
+    rclcpp::Parameter str_param(SENSOR_URI, "/dev/ttyACM0");
+    this->set_parameter(str_param);
   }
-
-  (void)interface_->subscribeMeasurement([&](std::shared_ptr<tofcore::Measurement_T> f) -> void
-                                         { updateFrame(*f); });
 
   // Get sensor info
   TofComm::versionData_t versionData{};
@@ -116,7 +125,7 @@ ToFSensor::ToFSensor()
   // Configurable params
   this->declare_parameter(CAPTURE_MODE, "distance_amplitude");
   this->declare_parameter(STREAMING_STATE, true);
-  this->declare_parameter(MODULATION_FREQUENCY, "12");
+  this->declare_parameter(MODULATION_FREQUENCY, 12.0);
   this->declare_parameter(DISTANCE_OFFSET, 0);
   this->declare_parameter(MINIMUM_AMPLITUDE, 0);
   this->declare_parameter(FLIP_HORIZONTAL, false);
@@ -176,6 +185,10 @@ ToFSensor::ToFSensor()
   // Update all parameters
   auto params = this->get_parameters(this->list_parameters({}, 1).names);
   this->on_set_parameters_callback(params);
+
+    (void)interface_->subscribeMeasurement([&](std::shared_ptr<tofcore::Measurement_T> f) -> void
+                                         { updateFrame(*f); });
+
 }
 
 rcl_interfaces::msg::SetParametersResult ToFSensor::on_set_parameters_callback(
@@ -310,41 +323,10 @@ void ToFSensor::apply_hdr_mode_param(const rclcpp::Parameter &parameter, rcl_int
 
 void ToFSensor::apply_modulation_frequency_param(const rclcpp::Parameter &parameter, rcl_interfaces::msg::SetParametersResult &result)
 {
-  auto value = parameter.as_string();
-  RCLCPP_INFO(this->get_logger(), "Handling parameter \"%s\" : %s", parameter.get_name().c_str(), value.c_str());
+  auto value = parameter.as_double();
+  RCLCPP_INFO(this->get_logger(), "Handling parameter \"%s\" : %f", parameter.get_name().c_str(), value);
 
-  int mod_freq_index = 0;
-  if (begins_with("12", value))
-  {
-    mod_freq_index = 0;
-  }
-  else if (begins_with("24", value))
-  {
-    mod_freq_index = 1;
-  }
-  else if (begins_with("6", value))
-  {
-    mod_freq_index = 2;
-  }
-  else if (begins_with("3", value))
-  {
-    mod_freq_index = 3;
-  }
-  else if (begins_with("1.5", value))
-  {
-    mod_freq_index = 4;
-  }
-  else if (begins_with("0.75", value))
-  {
-    mod_freq_index = 5;
-  }
-  else
-  {
-    result.successful = false;
-    result.reason = parameter.get_name() + " value is out of range";
-    return;
-  }
-  interface_->setModulation(mod_freq_index, 0);
+  interface_->setModulation(value);
 }
 
 void ToFSensor::apply_streaming_param(const rclcpp::Parameter &parameter, rcl_interfaces::msg::SetParametersResult &result)
