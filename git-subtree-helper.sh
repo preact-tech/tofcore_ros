@@ -29,7 +29,7 @@ git checkout main
 echo
 echo "Add in changes"
 echo -----------------------------------------
-git subtree add -P ros_nodes ${STAGING_BRANCH} --message "Update tofcore_ros from internal repo, commit: ${TOFCORE_ROS_LATEST_COMMIT}"
+git subtree merge -P ros_nodes ${STAGING_BRANCH} --message "Update tofcore_ros from internal repo, commit: ${TOFCORE_ROS_LATEST_COMMIT}"
 
 
 
