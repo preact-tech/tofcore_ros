@@ -16,6 +16,7 @@ find_package(catkin REQUIRED COMPONENTS
   dynamic_reconfigure
 )
 find_package(message_generation)
+
 #roslaunch_add_file_check(launch)
 
 ## System dependencies are found with CMake's conventions

@@ -43,20 +43,6 @@ provision_ros1: provision ##	Install required tools, packages and git repos to b
 	cd ros1 && ln -fs ../../libtofcore tofcore_ros/libtofcore
 
 
-tofcore_msgs_deb: ##	Build the tofcore_msgs ROS2 package as a debian package
-	rosdep update --include-eol-distros
-	cd tofcore_msgs; bloom-generate rosdebian
-	cd tofcore_msgs; fakeroot debian/rules binary
-	sudo apt install ./ros-galactic-tofcore-msgs_${VERSION_MAJOR}.${VERSION_MINOR}.${BITBUCKET_BUILD_NUMBER}-0focal_amd64.deb
-
-tofcore_deb: tofcore_msgs_deb ##	Build the truensense ROS2 package as a debian package
-	echo "tofcore_msgs:" > /tmp/rosdep.yaml
-	echo "  ubuntu: [ros-galactic-tofcore-msgs]" >> /tmp/rosdep.yaml
-	echo "yaml file:///tmp/rosdep.yaml" | sudo tee /etc/ros/rosdep/sources.list.d/50-my-packages.list
-	rosdep update --include-eol-distros
-	cd ros2; bloom-generate rosdebian
-	cd ros2; fakeroot debian/rules binary
-
 .PHONY: build
 build:
 	 cd ros2 && colcon build --packages-skip ros1_bridge preact_alg detection_py lens_calibration
