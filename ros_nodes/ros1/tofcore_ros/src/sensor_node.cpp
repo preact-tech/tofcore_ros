@@ -99,7 +99,7 @@ ToFSensor::ToFSensor(ros::NodeHandle nh)
   //Configurable params
   ros::param::set(CAPTURE_MODE, "distance_amplitude");
   ros::param::set(STREAMING_STATE, true);
-  ros::param::set(MODULATION_FREQUENCY, "12");
+  ros::param::set(MODULATION_FREQUENCY, 12);
   ros::param::set(DISTANCE_OFFSET, 0);
   ros::param::set(MINIMUM_AMPLITUDE, 0);
   ros::param::set(FLIP_HORIZONTAL, false);
@@ -245,43 +245,13 @@ void ToFSensor::apply_integration_time_param(const std::string& parameter ,tofco
 
 void ToFSensor::apply_modulation_frequency_param(const std::string& parameter ,tofcore_ros1::tofcoreConfig &config)
 {
-  std::string value;
+  uint16_t value;
   value=config.modulation_frequency;
   
-  ROS_INFO( "Handling parameter \"%s\" : %s", parameter.c_str(), value.c_str());
+  ROS_INFO( "Handling parameter \"%s\" : %d", parameter.c_str(), value);
 
-  int mod_freq_index = 0;
-  if(begins_with("12", value))
-  {
-    mod_freq_index = 0;
-  }
-  else if(begins_with("24", value))
-  {
-    mod_freq_index = 1;
-  }
-  else if(begins_with("6", value))
-  {
-    mod_freq_index = 2;
-  }
-  else if(begins_with("3", value))
-  {
-    mod_freq_index = 3;
-  }
-  else if(begins_with("1.5", value))
-  {
-    mod_freq_index = 4;
-  }
-  else if(begins_with("0.75", value))
-  {
-    mod_freq_index = 5;
-  }
-  else
-  {
-    // result.successful = false;
-    // result.reason = parameter.get_name() + " value is out of range";
-    return;
-  }
-  interface_->setModulation(mod_freq_index, 0);
+  
+  interface_->setModulation(value);
 }
 
 void ToFSensor::apply_streaming_param(const std::string& parameter,tofcore_ros1::tofcoreConfig &config)

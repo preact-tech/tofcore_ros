@@ -5,15 +5,15 @@
 
 /truesense/tof_sensor_rear:
   ros__parameters:
-    flip_horizontal: true
-    flip_vertical: true
+    flip_horizontal: false
+    flip_vertical: false
     #desired_location: rear
     stream_type: distance_amplitude
 
 /truesense/tof_sensor_left:
   ros__parameters:
-    flip_horizontal: true
-    flip_vertical: true
+    flip_horizontal: false
+    flip_vertical: false
     desired_location: left
     stream_type: distance_amplitude
 /automatic_exposure:
