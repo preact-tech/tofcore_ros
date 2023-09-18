@@ -125,7 +125,7 @@ ToFSensor::ToFSensor()
   // Configurable params
   this->declare_parameter(CAPTURE_MODE, "distance_amplitude");
   this->declare_parameter(STREAMING_STATE, true);
-  this->declare_parameter(MODULATION_FREQUENCY, 12.0);
+  this->declare_parameter(MODULATION_FREQUENCY, 12000);
   this->declare_parameter(DISTANCE_OFFSET, 0);
   this->declare_parameter(MINIMUM_AMPLITUDE, 0);
   this->declare_parameter(FLIP_HORIZONTAL, false);
@@ -323,8 +323,8 @@ void ToFSensor::apply_hdr_mode_param(const rclcpp::Parameter &parameter, rcl_int
 
 void ToFSensor::apply_modulation_frequency_param(const rclcpp::Parameter &parameter, rcl_interfaces::msg::SetParametersResult &result)
 {
-  auto value = parameter.as_double();
-  RCLCPP_INFO(this->get_logger(), "Handling parameter \"%s\" : %f", parameter.get_name().c_str(), value);
+  auto value = parameter.as_int();
+  RCLCPP_INFO(this->get_logger(), "Handling parameter \"%s\" : %d", parameter.get_name().c_str(), value);
 
   interface_->setModulation(value);
 }
