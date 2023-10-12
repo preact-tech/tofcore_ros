@@ -76,6 +76,9 @@ ToFSensor::ToFSensor(ros::NodeHandle nh)
   (void)interface_->subscribeMeasurement([&](std::shared_ptr<tofcore::Measurement_T> f) -> void
                                          { updateFrame(*f); });
 
+  this->f_ = boost::bind(&ToFSensor::on_set_parameters_callback,this, boost::placeholders::_1, boost::placeholders::_2);
+  this->server_.setCallback(this->f_);
+
 
   //Get sensor info
   TofComm::versionData_t versionData { };
@@ -87,6 +90,7 @@ ToFSensor::ToFSensor(ros::NodeHandle nh)
   cartesianTransform_.initLensTransform(m_width, HEIGHT, rays_x, rays_y, rays_z);
   
   // Setup ROS parameters
+  ROS_INFO( "Reading info from sensor and setting parameters");
 
   // //Read Only params
   ros::param::set(API_VERSION, versionData.m_softwareSourceID);
@@ -133,8 +137,7 @@ ToFSensor::ToFSensor(ros::NodeHandle nh)
     ros::param::set(INTEGRATION_TIME, 500);
 
   //Setup parameter server call back
-  this->f_ = boost::bind(&ToFSensor::on_set_parameters_callback,this, boost::placeholders::_1, boost::placeholders::_2);
-  this->server_.setCallback(this->f_);
+
 
   ROS_INFO("Initialized");
 }
@@ -288,6 +291,7 @@ void ToFSensor::apply_minimum_amplitude_param(const std::string& parameter ,tofc
   int32_t value;
   value=config.minimum_amplitude;
   ROS_INFO( "Handling parameter \"%s\" : %d", parameter.c_str(), value);
+  ROS_INFO( "WARNING: This parameter is not currently used.");
 
   interface_->setMinAmplitude(value);
 }
