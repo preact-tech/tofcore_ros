@@ -1,9 +1,1 @@
 repositories:
-  libtofcore:
-    type: git
-    url: git@bitbucket.org:preact-tech/libtofcore
-    version: develop
-  # algorithm:
-  #   type: git
-  #   url: git@bitbucket.org:preact-tech/algorithm.git
-  #   version: feature/mojave_integration

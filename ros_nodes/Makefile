@@ -26,7 +26,6 @@ provision:
 	vcs --nested custom --git --args show
 	rm -rf ros2/tofcore_ros/libtofcore ros2/tofcore_discovery/libtofcore ros1/tofcore_ros/libtofcore
 	cd ros2 && ln -fs ../../libtofcore tofcore_ros/libtofcore
-	# ln -fs ../algorithm ros2/algorithm
 
 .PHONY: provision_bridge
 provision_bridge: provision ##	Install required tools, packages and git repos to build the truenense package as well as the ROS bridge package
@@ -43,14 +42,13 @@ provision_ros1: provision ##	Install required tools, packages and git repos to b
 	cd ros1 && ln -fs ../../libtofcore tofcore_ros/libtofcore
 
 
-.PHONY: build
-build:
+.PHONY: ros2
+ros2:
 	 cd ros2 && colcon build --packages-skip ros1_bridge preact_alg detection_py lens_calibration
 	 
 .PHONY: ros1
 ros1:
 	 cd ros1 &&  source /opt/ros/noetic/setup.bash && colcon build
-
 
 .PHONY: bridge
 bridge: build ##	Build the ROS1 bridge, build environment must have both ROS1 and ROS2 installed
@@ -78,5 +76,5 @@ clean:
 	rm -r -f *.zsync
 .PHONY: clobber
 clobber: clean
-	rm -rf libtofcore ros2/tofcore_ros/libtofcore ros1/tofcore_ros/libtofcore algorithm ros2/algorithm
+	rm -rf ros2/tofcore_ros/libtofcore ros1/tofcore_ros/libtofcore algorithm ros2/algorithm
 	rm -r -f ros1_bridge

@@ -69,3 +69,6 @@ _deps
 # vcpkg
 vcpkg_installed/
 
+#Linked repo
+ros_nodes/ros1/tofcore_ros/libtofcore
+ros_nodes/ros2/tofcore_ros/libtofcore
