@@ -16,7 +16,7 @@ find_package(catkin REQUIRED COMPONENTS
   dynamic_reconfigure
 )
 find_package(message_generation)
-
+find_package( OpenCV REQUIRED )
 #roslaunch_add_file_check(launch)
 
 ## System dependencies are found with CMake's conventions
@@ -131,6 +131,7 @@ catkin_package(
 include_directories(
  include
  ${catkin_INCLUDE_DIRS}
+ ${OpenCV_INCLUDE_DIRS}
 )
 
 ## Declare a C++ library
@@ -168,6 +169,7 @@ target_include_directories(tof_sensor PUBLIC
 target_link_libraries(tof_sensor
   ${catkin_LIBRARIES}
   tofcore
+  ${OpenCV_LIBS}
 )
 
 #############

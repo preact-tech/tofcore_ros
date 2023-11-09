@@ -67,7 +67,6 @@ public:
     std::optional<std::vector<uint16_t>> getIntegrationTimes();
     bool getLensInfo(std::vector<double> &rays_x, std::vector<double> &rays_y, std::vector<double> &rays_z);
     std::optional<LensIntrinsics_t> getLensIntrinsics();
-    std::optional<std::tuple<std::array<std::byte, 4>, uint16_t>> getIPMeasurementEndpoint();
     bool getIPv4Settings(std::array<std::byte, 4>& adrs, std::array<std::byte, 4>& mask, std::array<std::byte, 4>& gateway);
     bool getSensorInfo(TofComm::versionData_t &versionData);
     std::optional<std::string> getSensorLocation();
@@ -87,7 +86,6 @@ public:
     bool setHDRMode(uint8_t mode);
     bool setIntegrationTime(uint16_t);
     bool setIntegrationTimes(uint16_t, uint16_t, uint16_t);
-    bool setIPMeasurementEndpoint(std::array<std::byte,4> address, uint16_t port);
     bool setIPv4Settings(const std::array<std::byte, 4>& adrs, const std::array<std::byte, 4>& mask, const std::array<std::byte, 4>& gateway);
     bool setMinAmplitude(uint16_t minAmplitude);
     bool setModulation(uint16_t modFreqkHz);

@@ -37,6 +37,14 @@ source ./install/setup.bash
 rosrun rqt_reconfigure rqt_reconfigure
 ```
 Terminal 3:
+
+Default rviz config file located at ros1/rviz/default_config.rviz
+```
+cd ros1
+source ./install/setup.bash
+rosrun rviz rviz
+```
+Terminal 4:
 ```
 cd ros1
 source ./install/setup.bash

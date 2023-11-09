@@ -1,12 +1,7 @@
 #include "sensor_node.hpp"
 
-
-
-
-
 using namespace std::chrono_literals;
 using namespace std::string_literals;
-
 
 constexpr double SENSOR_PIXEL_SIZE_MM = 0.02; // camera sensor pixel size 20x20 um
 constexpr int m_width = 320;
@@ -16,53 +11,58 @@ constexpr int LENS_CENTER_OFFSET_Y = 0;
 constexpr int32_t MIN_INTEGRATION_TIME = 0;
 constexpr int32_t MAX_INTEGRATION_TIME = 4000;
 
-
-//Read Only params
-constexpr auto API_VERSION  = "/tof_sensor/api_version";
-constexpr auto CHIP_ID  = "/tof_sensor/chip_id";
-constexpr auto MODEL_NAME  = "/tof_sensor/model_name";
+// Read Only params
+constexpr auto API_VERSION = "/tof_sensor/api_version";
+constexpr auto CHIP_ID = "/tof_sensor/chip_id";
+constexpr auto MODEL_NAME = "/tof_sensor/model_name";
 constexpr auto SW_VERSION = "/tof_sensor/sw_version";
-constexpr auto SENSOR_URL  = "/tof_sensor/sensor_url"; 
+constexpr auto SENSOR_URL = "/tof_sensor/sensor_url";
 
-
-
-//Configurable params
+// Configurable params
 constexpr auto CAPTURE_MODE = "/tof_sensor/capture_mode";
 constexpr auto INTEGRATION_TIME = "/tof_sensor/integration_time";
 constexpr auto STREAMING_STATE = "/tof_sensor/streaming";
 constexpr auto MODULATION_FREQUENCY = "/tof_sensor/modulation_frequency";
 constexpr auto DISTANCE_OFFSET = "/tof_sensor/distance_offset";
 constexpr auto MINIMUM_AMPLITUDE = "/tof_sensor/minimum_amplitude";
-constexpr auto FLIP_HORIZONTAL= "/tof_sensor/flip_hotizontal";
+constexpr auto FLIP_HORIZONTAL = "/tof_sensor/flip_hotizontal";
 constexpr auto FLIP_VERITCAL = "/tof_sensor/flip_vertical";
-constexpr auto BINNING  = "/tof_sensor/binning"; 
-constexpr auto SENSOR_NAME  = "/tof_sensor/sensor_name";
-constexpr auto SENSOR_LOCATION  = "/tof_sensor/sensor_location";
-constexpr auto DISCOVERY_FILTER  = "/tof_sensor/discovery_filter"; //TODO: Implement this
+constexpr auto BINNING = "/tof_sensor/binning";
+constexpr auto SENSOR_NAME = "/tof_sensor/sensor_name";
+constexpr auto SENSOR_LOCATION = "/tof_sensor/sensor_location";
+constexpr auto DISCOVERY_FILTER = "/tof_sensor/discovery_filter"; // TODO: Implement this
 
-
+// Filter parameters
+constexpr auto MEDIAN_FILTER = "/tof_sensor/median_filter";
+constexpr auto MEDIAN_KERNEL = "/tof_sensor/median_kernel";
+constexpr auto BILATERAL_FILTER = "/tof_sensor/bilateral_filter";
+constexpr auto BILATERAL_KERNEL = "/tof_sensor/bilateral_kernel";
+constexpr auto BILATERAL_COLOR = "/tof_sensor/bilateral_color";
+constexpr auto BILATERAL_SPACE = "/tof_sensor/bilateral_space";
+constexpr auto TEMPORAL_FILTER = "/tof_sensor/temporal_filter";
+constexpr auto TEMPORAL_ALPHA = "/tof_sensor/temporal_alpha";
 
 /// Quick helper function that return true if the string haystack starts with the string needle
-bool begins_with(const std::string& needle, const std::string& haystack )
+bool begins_with(const std::string &needle, const std::string &haystack)
 {
   return haystack.rfind(needle, 0) == 0;
 }
 
-
 ToFSensor::ToFSensor(ros::NodeHandle nh)
 {
-  this->n_=nh;
+  this->n_ = nh;
   int pub_queue = 100;
 
   // Setup topic pulbishers
   pub_ambient_ = this->n_.advertise<sensor_msgs::Image>("ambient", pub_queue);
-  pub_distance_ = this->n_.advertise<sensor_msgs::Image>("depth", pub_queue);//renamed this from distance to depth to match truesense node
+  pub_distance_ = this->n_.advertise<sensor_msgs::Image>("depth", pub_queue); // renamed this from distance to depth to match truesense node
   pub_amplitude_ = this->n_.advertise<sensor_msgs::Image>("amplitude", pub_queue);
   pub_pcd_ = this->n_.advertise<sensor_msgs::PointCloud2>("points", pub_queue);
   pub_cust_pcd_ = this->n_.advertise<tofcore_ros1::TofcorePointCloud2>("cust_points", pub_queue);
 
-  for(size_t i = 0; i != pub_dcs_.size(); i++) {
-    std::string topic {"dcs"};
+  for (size_t i = 0; i != pub_dcs_.size(); i++)
+  {
+    std::string topic{"dcs"};
     topic += std::to_string(i);
     pub_dcs_[i] = this->n_.advertise<sensor_msgs::Image>(topic, pub_queue);
   }
@@ -72,35 +72,35 @@ ToFSensor::ToFSensor(ros::NodeHandle nh)
   sensor_temperature_bl = this->n_.advertise<sensor_msgs::Temperature>("sensor_temperature_bl", pub_queue);
   sensor_temperature_br = this->n_.advertise<sensor_msgs::Temperature>("sensor_temperature_br", pub_queue);
 
-  interface_.reset( new tofcore::Sensor(1, "/dev/ttyACM0"));
+  interface_.reset(new tofcore::Sensor(1, "/dev/ttyACM0"));
+  interface_->stopStream();
+
+  // Setup parameter server call back
   (void)interface_->subscribeMeasurement([&](std::shared_ptr<tofcore::Measurement_T> f) -> void
                                          { updateFrame(*f); });
-
-  this->f_ = boost::bind(&ToFSensor::on_set_parameters_callback,this, boost::placeholders::_1, boost::placeholders::_2);
+  this->f_ = boost::bind(&ToFSensor::on_set_parameters_callback, this, boost::placeholders::_1, boost::placeholders::_2);
   this->server_.setCallback(this->f_);
 
-
-  //Get sensor info
-  TofComm::versionData_t versionData { };
+  // Get sensor info
+  TofComm::versionData_t versionData{};
   interface_->getSensorInfo(versionData);
 
-  //use generic lens transform always
+  // use generic lens transform always
   std::vector<double> rays_x, rays_y, rays_z;
   interface_->getLensInfo(rays_x, rays_y, rays_z);
   cartesianTransform_.initLensTransform(m_width, HEIGHT, rays_x, rays_y, rays_z);
-  
+
   // Setup ROS parameters
-  ROS_INFO( "Reading info from sensor and setting parameters");
+  ROS_INFO("Reading info from sensor and setting parameters");
 
   // //Read Only params
   ros::param::set(API_VERSION, versionData.m_softwareSourceID);
   ros::param::set(CHIP_ID, std::to_string(versionData.m_sensorChipId));
   ros::param::set(MODEL_NAME, versionData.m_modelName);
   ros::param::set(SW_VERSION, versionData.m_softwareVersion);
-  ros::param::set(SENSOR_URL,  "/dev/ttyACM0"); 
-  
+  ros::param::set(SENSOR_URL, "/dev/ttyACM0");
 
-  //Configurable params
+  // Configurable params
   ros::param::set(CAPTURE_MODE, "distance_amplitude");
   ros::param::set(STREAMING_STATE, true);
   ros::param::set(MODULATION_FREQUENCY, 12);
@@ -110,104 +110,158 @@ ToFSensor::ToFSensor(ros::NodeHandle nh)
   ros::param::set(FLIP_VERITCAL, false);
   ros::param::set(BINNING, false);
 
-  //Reading optional values from sensor
-  std::optional<std::string> init_name = interface_->getSensorName();
-  std::optional<std::string>  init_location = interface_->getSensorLocation();
-  std::optional<std::vector<short unsigned int> >  init_integration = interface_->getIntegrationTimes();
+  // Filter parameters
+  ros::param::set(MEDIAN_FILTER, true);
+  ros::param::set(MEDIAN_KERNEL, 3);
+  ros::param::set(BILATERAL_FILTER, true);
+  ros::param::set(BILATERAL_KERNEL, 5);
+  ros::param::set(BILATERAL_COLOR, 75);
+  ros::param::set(BILATERAL_SPACE, 75);
+  // ros::param::set(TEMPORAL_FILTER, true);
+  // ros::param::set(TEMPORAL_ALPHA, 3);
 
-  if(init_name)
+  // Reading optional values from sensor
+  std::optional<std::string> init_name = interface_->getSensorName();
+  std::optional<std::string> init_location = interface_->getSensorLocation();
+  std::optional<std::vector<short unsigned int>> init_integration = interface_->getIntegrationTimes();
+
+  if (init_name)
     ros::param::set(SENSOR_NAME, *init_name);
   else
     ros::param::set(SENSOR_NAME, "Mojave");
 
-  if(init_location)
+  if (init_location)
   {
     ros::param::set(SENSOR_LOCATION, *init_location);
-    this->sensor_location_=*init_location;
+    this->sensor_location_ = *init_location;
   }
   else
   {
     ros::param::set(SENSOR_LOCATION, "Unknown");
-    this->sensor_location_="Unknown";
+    this->sensor_location_ = "Unknown";
   }
 
-  if(init_integration)
+  if (init_integration)
     ros::param::set(INTEGRATION_TIME, (*init_integration).at(0));
   else
     ros::param::set(INTEGRATION_TIME, 500);
 
-  //Setup parameter server call back
-
-
   ROS_INFO("Initialized");
 }
 
-void ToFSensor::on_set_parameters_callback( tofcore_ros1::tofcoreConfig &config, uint32_t )
+void ToFSensor::on_set_parameters_callback(tofcore_ros1::tofcoreConfig &config, uint32_t)
 {
-  //Keeping track of the old config items is clunky, but I can't find a better way to determine which of the parameters have changed
-  std::vector< std::string >  parameters ;
+  // Keeping track of the old config items is clunky, but I can't find a better way to determine which of the parameters have changed
+  std::vector<std::string> parameters;
   this->n_.getParamNames(parameters);
 
   for (const auto &parameter : parameters)
   {
-    if (parameter == CAPTURE_MODE  && config.capture_mode != this->oldConfig_.capture_mode)
+    if (parameter == CAPTURE_MODE && config.capture_mode != this->oldConfig_.capture_mode)
     {
       bool streaming = config.streaming;
       if (streaming)
       {
-        this->apply_stream_type_param(parameter,config);
+        this->apply_stream_type_param(parameter, config);
       }
     }
-    else if ( parameter == INTEGRATION_TIME && config.integration_time != this->oldConfig_.integration_time)
+    else if (parameter == INTEGRATION_TIME && config.integration_time != this->oldConfig_.integration_time)
     {
-      this->apply_integration_time_param(parameter,config);
+      this->apply_integration_time_param(parameter, config);
     }
-    else if( parameter == STREAMING_STATE && config.streaming != this->oldConfig_.streaming)
+    else if (parameter == STREAMING_STATE && config.streaming != this->oldConfig_.streaming)
     {
-      this->apply_streaming_param(parameter,config);
+      this->apply_streaming_param(parameter, config);
     }
-    else if( parameter == MODULATION_FREQUENCY && config.modulation_frequency != this->oldConfig_.modulation_frequency)
+    else if (parameter == MODULATION_FREQUENCY && config.modulation_frequency != this->oldConfig_.modulation_frequency)
     {
-      this->apply_modulation_frequency_param(parameter,config);
+      this->apply_modulation_frequency_param(parameter, config);
     }
-    else if( parameter == DISTANCE_OFFSET && config.distance_offset != this->oldConfig_.distance_offset)
+    else if (parameter == DISTANCE_OFFSET && config.distance_offset != this->oldConfig_.distance_offset)
     {
-      this->apply_distance_offset_param(parameter,config);
+      this->apply_distance_offset_param(parameter, config);
     }
-    else if( parameter == MINIMUM_AMPLITUDE && config.minimum_amplitude != this->oldConfig_.minimum_amplitude)
+    else if (parameter == MINIMUM_AMPLITUDE && config.minimum_amplitude != this->oldConfig_.minimum_amplitude)
     {
-      this->apply_minimum_amplitude_param(parameter,config);
+      this->apply_minimum_amplitude_param(parameter, config);
     }
-    else if( parameter == FLIP_HORIZONTAL && config.flip_hotizontal != this->oldConfig_.flip_hotizontal)
+    else if (parameter == FLIP_HORIZONTAL && config.flip_hotizontal != this->oldConfig_.flip_hotizontal)
     {
-      this->apply_flip_horizontal_param(parameter,config);
+      this->apply_flip_horizontal_param(parameter, config);
     }
-    else if( parameter == FLIP_VERITCAL && config.flip_vertical != this->oldConfig_.flip_vertical)
+    else if (parameter == FLIP_VERITCAL && config.flip_vertical != this->oldConfig_.flip_vertical)
     {
-      this->apply_flip_vertical_param(parameter,config);
+      this->apply_flip_vertical_param(parameter, config);
     }
-    else if( parameter == BINNING && config.binning != this->oldConfig_.binning)
+    else if (parameter == BINNING && config.binning != this->oldConfig_.binning)
     {
-      this->apply_binning_param(parameter,config);
+      this->apply_binning_param(parameter, config);
     }
-      else if( parameter == SENSOR_NAME && config.sensor_name != this->oldConfig_.sensor_name)
+    else if (parameter == SENSOR_NAME && config.sensor_name != this->oldConfig_.sensor_name)
     {
       this->apply_sensor_name_param(parameter, config);
     }
-    else if( parameter == SENSOR_LOCATION && config.sensor_location != this->oldConfig_.sensor_location)
+    else if (parameter == SENSOR_LOCATION && config.sensor_location != this->oldConfig_.sensor_location)
     {
       this->apply_sensor_location_param(parameter, config);
     }
+    else if (parameter == MEDIAN_FILTER && config.median_filter != this->oldConfig_.median_filter)
+    {
+      bool value = config.median_filter;
+      ROS_INFO("Handling parameter \"%s\" : %s", parameter.c_str(), (value ? "true" : "false"));
+      this->median_filter = value;
+    }
+    else if (parameter == MEDIAN_KERNEL && config.median_kernel != this->oldConfig_.median_kernel)
+    {
+      int value = config.median_kernel;
+      ROS_INFO("Handling parameter \"%s\" : %d", parameter.c_str(), int(value / 2) * 2 + 1);
+      this->median_kernel = int(value / 2) * 2 + 1;
+    }
+    else if (parameter == BILATERAL_FILTER && config.bilateral_filter != this->oldConfig_.bilateral_filter)
+    {
+      bool value = config.bilateral_filter;
+      ROS_INFO("Handling parameter \"%s\" : %s", parameter.c_str(), (value ? "true" : "false"));
+      this->bilateral_filter = value;
+    }
+    else if (parameter == BILATERAL_COLOR && config.bilateral_color != this->oldConfig_.bilateral_color)
+    {
+      int value = config.bilateral_color;
+      ROS_INFO("Handling parameter \"%s\" : %d", parameter.c_str(), value);
+      this->bilateral_color = value;
+    }
+    else if (parameter == BILATERAL_KERNEL && config.bilateral_kernel != this->oldConfig_.bilateral_kernel)
+    {
+      int value = config.bilateral_kernel;
+      ROS_INFO("Handling parameter \"%s\" : %d", parameter.c_str(), int(value / 2) * 2 + 1);
+      this->bilateral_kernel = int(value / 2) * 2 + 1;
+    }
+    else if (parameter == BILATERAL_SPACE && config.bilateral_space != this->oldConfig_.bilateral_space)
+    {
+      int value = config.bilateral_space;
+      ROS_INFO("Handling parameter \"%s\" : %d", parameter.c_str(), value);
+      this->bilateral_space = value;
+    }
+    // else if (parameter == TEMPORAL_FILTER && config.temporal_filter != this->oldConfig_.temporal_filter)
+    // {
+    //   bool value = config.temporal_filter;
+    //   ROS_INFO("Handling parameter \"%s\" : %s", parameter.c_str(), (value ? "true" : "false"));
+    //   this->temporal_filter = value;
+    // }
+    // else if (parameter == TEMPORAL_ALPHA && config.temporal_alpha != this->oldConfig_.temporal_alpha)
+    // {
+    //   int value = config.temporal_alpha;
+    //   ROS_INFO("Handling parameter \"%s\" : %s", parameter.c_str(), value);
+    //   this->temporal_alpha = value;
+    // }
   }
-  this->oldConfig_=config;
-  }
+  this->oldConfig_ = config;
+}
 
-
-void ToFSensor::apply_stream_type_param(const std::string& parameter ,tofcore_ros1::tofcoreConfig &config)
+void ToFSensor::apply_stream_type_param(const std::string &parameter, tofcore_ros1::tofcoreConfig &config)
 {
   std::string value;
-  value=config.capture_mode;
-  ROS_INFO( "Handling parameter \"%s\" : \"%s\"", parameter.c_str(), value.c_str());
+  value = config.capture_mode;
+  ROS_INFO("Handling parameter \"%s\" : \"%s\"", parameter.c_str(), value.c_str());
   if (value == "distance")
   {
     interface_->streamDistance();
@@ -230,12 +284,11 @@ void ToFSensor::apply_stream_type_param(const std::string& parameter ,tofcore_ro
   }
 }
 
-
-void ToFSensor::apply_integration_time_param(const std::string& parameter ,tofcore_ros1::tofcoreConfig &config)
+void ToFSensor::apply_integration_time_param(const std::string &parameter, tofcore_ros1::tofcoreConfig &config)
 {
   int32_t value;
-  value =config.integration_time;
-  ROS_INFO( "Handling parameter \"%s\" : %d", parameter.c_str(), value);
+  value = config.integration_time;
+  ROS_INFO("Handling parameter \"%s\" : %d", parameter.c_str(), value);
   if (value < MIN_INTEGRATION_TIME || value > MAX_INTEGRATION_TIME)
   {
     ROS_ERROR("Value out of range: %d", value);
@@ -246,110 +299,112 @@ void ToFSensor::apply_integration_time_param(const std::string& parameter ,tofco
   }
 }
 
-void ToFSensor::apply_modulation_frequency_param(const std::string& parameter ,tofcore_ros1::tofcoreConfig &config)
+void ToFSensor::apply_modulation_frequency_param(const std::string &parameter, tofcore_ros1::tofcoreConfig &config)
 {
   uint16_t value;
-  value=config.modulation_frequency;
-  
-  ROS_INFO( "Handling parameter \"%s\" : %d", parameter.c_str(), value);
+  value = config.modulation_frequency;
 
-  
+  ROS_INFO("Handling parameter \"%s\" : %d", parameter.c_str(), value);
+
   interface_->setModulation(value);
 }
 
-void ToFSensor::apply_streaming_param(const std::string& parameter,tofcore_ros1::tofcoreConfig &config)
+void ToFSensor::apply_streaming_param(const std::string &parameter, tofcore_ros1::tofcoreConfig &config)
 {
-  try {
+  try
+  {
     bool value;
-    value=config.streaming;
-    ROS_INFO( "Handling parameter \"%s\" : %s", parameter.c_str(), (value ?"true":"false"));
-    if(value) {
+    value = config.streaming;
+    ROS_INFO("Handling parameter \"%s\" : %s", parameter.c_str(), (value ? "true" : "false"));
+    if (value)
+    {
       this->apply_stream_type_param(CAPTURE_MODE, config);
-    } else {
+    }
+    else
+    {
       interface_->stopStream();
     }
   }
-  catch(std::exception& e) {
+  catch (std::exception &e)
+  {
     // result.successful = false;
     // result.reason = e.what();
   }
 }
 
-
-
-
-void ToFSensor::apply_distance_offset_param(const std::string& parameter ,tofcore_ros1::tofcoreConfig &config)
+void ToFSensor::apply_distance_offset_param(const std::string &parameter, tofcore_ros1::tofcoreConfig &config)
 {
   int32_t value;
-  value=config.distance_offset;
-  ROS_INFO( "Handling parameter \"%s\" : %d", parameter.c_str(), value);
+  value = config.distance_offset;
+  ROS_INFO("Handling parameter \"%s\" : %d", parameter.c_str(), value);
   interface_->setOffset(value);
 }
 
-void ToFSensor::apply_minimum_amplitude_param(const std::string& parameter ,tofcore_ros1::tofcoreConfig &config)
+void ToFSensor::apply_minimum_amplitude_param(const std::string &parameter, tofcore_ros1::tofcoreConfig &config)
 {
-  int32_t value;
-  value=config.minimum_amplitude;
-  ROS_INFO( "Handling parameter \"%s\" : %d", parameter.c_str(), value);
-  ROS_INFO( "WARNING: This parameter is not currently used.");
-
+  int value;
+  value = config.minimum_amplitude;
+  ROS_INFO("Handling parameter \"%s\" : %d", parameter.c_str(), value);
+  this->min_amplitude=value;
   interface_->setMinAmplitude(value);
 }
-void ToFSensor::apply_flip_horizontal_param(const std::string& parameter ,tofcore_ros1::tofcoreConfig &config)
+void ToFSensor::apply_flip_horizontal_param(const std::string &parameter, tofcore_ros1::tofcoreConfig &config)
 {
   bool value;
-  value=config.flip_hotizontal;
-  ROS_INFO( "Handling parameter \"%s\" : %s", parameter.c_str(), (value ?"true":"false"));
+  value = config.flip_hotizontal;
+  ROS_INFO("Handling parameter \"%s\" : %s", parameter.c_str(), (value ? "true" : "false"));
   interface_->stopStream();
   interface_->setFlipHorizontally(value);
-  if(config.streaming)
+  if (config.streaming)
     this->apply_stream_type_param(CAPTURE_MODE, config);
 }
-void ToFSensor::apply_flip_vertical_param(const std::string& parameter ,tofcore_ros1::tofcoreConfig &config)
+void ToFSensor::apply_flip_vertical_param(const std::string &parameter, tofcore_ros1::tofcoreConfig &config)
 {
   bool value;
-  value=config.flip_vertical;
-  ROS_INFO( "Handling parameter \"%s\" : %s", parameter.c_str(), (value ?"true":"false"));
+  value = config.flip_vertical;
+  ROS_INFO("Handling parameter \"%s\" : %s", parameter.c_str(), (value ? "true" : "false"));
   interface_->stopStream();
   interface_->setFlipVertically(value);
-  if(config.streaming)
+  if (config.streaming)
     this->apply_stream_type_param(CAPTURE_MODE, config);
 }
-void ToFSensor::apply_binning_param(const std::string& parameter ,tofcore_ros1::tofcoreConfig &config)
+void ToFSensor::apply_binning_param(const std::string &parameter, tofcore_ros1::tofcoreConfig &config)
 {
   bool value;
-  value=config.binning;
-  ROS_INFO( "Handling parameter \"%s\" : %s", parameter.c_str(), (value ?"true":"false"));
-  interface_->setBinning(value,value);
+  value = config.binning;
+  ROS_INFO("Handling parameter \"%s\" : %s", parameter.c_str(), (value ? "true" : "false"));
+  interface_->setBinning(value, value);
 }
-void ToFSensor::apply_sensor_name_param(const std::string& parameter ,tofcore_ros1::tofcoreConfig &config)
+void ToFSensor::apply_sensor_name_param(const std::string &parameter, tofcore_ros1::tofcoreConfig &config)
 {
   auto value = config.sensor_name;
-  ROS_INFO("Handling parameter \"%s\" : %s", parameter.c_str(), value.c_str() );
+  ROS_INFO("Handling parameter \"%s\" : %s", parameter.c_str(), value.c_str());
   interface_->setSensorName(value);
   interface_->storeSettings();
 }
-void ToFSensor::apply_sensor_location_param(const std::string& parameter ,tofcore_ros1::tofcoreConfig &config)
+void ToFSensor::apply_sensor_location_param(const std::string &parameter, tofcore_ros1::tofcoreConfig &config)
 {
   auto value = config.sensor_location;
-  ROS_INFO( "Handling parameter \"%s\" : %s", parameter.c_str(), value.c_str() );
+  ROS_INFO("Handling parameter \"%s\" : %s", parameter.c_str(), value.c_str());
   interface_->setSensorLocation(value);
   interface_->storeSettings();
-  this->sensor_location_=value;
+  this->sensor_location_ = value;
 }
-void ToFSensor::publish_tempData(const tofcore::Measurement_T &frame, const ros::Time& stamp)
+void ToFSensor::publish_tempData(const tofcore::Measurement_T &frame, const ros::Time &stamp)
 {
-  const std::array<float, 4> defaultTemps {0.0,0.0,0.0,0.0};
+  const std::array<float, 4> defaultTemps{0.0, 0.0, 0.0, 0.0};
   auto temperatures = frame.sensor_temperatures().value_or(defaultTemps);
   int count = 0;
 
-  for(const auto& i : temperatures) {
+  for (const auto &i : temperatures)
+  {
     sensor_msgs::Temperature tmp;
     tmp.header.stamp = stamp;
     tmp.header.frame_id = "base_link";
     tmp.temperature = i;
     tmp.variance = 0;
-    switch (count) {
+    switch (count)
+    {
     case 0:
     {
       sensor_temperature_tl.publish(tmp);
@@ -375,7 +430,7 @@ void ToFSensor::publish_tempData(const tofcore::Measurement_T &frame, const ros:
   }
 }
 
-void ToFSensor::publish_amplData(const tofcore::Measurement_T &frame, ros::Publisher &pub, const ros::Time& stamp)
+void ToFSensor::publish_amplData(const tofcore::Measurement_T &frame, ros::Publisher &pub, const ros::Time &stamp)
 {
   sensor_msgs::Image img;
   img.header.stamp = stamp;
@@ -387,13 +442,12 @@ void ToFSensor::publish_amplData(const tofcore::Measurement_T &frame, ros::Publi
   img.is_bigendian = 0;
   auto amplitude_bv = frame.amplitude();
   img.data.resize(amplitude_bv.size() * sizeof(amplitude_bv.data()[0]));
-  uint8_t* amplitude_begin = (uint8_t*)amplitude_bv.data();
+  uint8_t *amplitude_begin = (uint8_t *)amplitude_bv.data();
   std::copy_n(amplitude_begin, img.data.size(), img.data.begin());
   pub.publish(img);
-
 }
 
-void ToFSensor::publish_ambientData(const tofcore::Measurement_T &frame, ros::Publisher &pub, const ros::Time& stamp)
+void ToFSensor::publish_ambientData(const tofcore::Measurement_T &frame, ros::Publisher &pub, const ros::Time &stamp)
 {
   sensor_msgs::Image img;
   img.header.stamp = stamp;
@@ -405,12 +459,12 @@ void ToFSensor::publish_ambientData(const tofcore::Measurement_T &frame, ros::Pu
   img.is_bigendian = 0;
   auto amplitude_bv = frame.ambient();
   img.data.resize(amplitude_bv.size() * sizeof(amplitude_bv.data()[0]));
-  uint8_t* amplitude_begin = (uint8_t*)amplitude_bv.data();
+  uint8_t *amplitude_begin = (uint8_t *)amplitude_bv.data();
   std::copy_n(amplitude_begin, img.data.size(), img.data.begin());
   pub.publish(img);
 }
 
-void ToFSensor::publish_distData(const tofcore::Measurement_T &frame, ros::Publisher &pub, const ros::Time& stamp)
+void ToFSensor::publish_distData(const tofcore::Measurement_T &frame, ros::Publisher &pub, const ros::Time &stamp)
 {
   sensor_msgs::Image img;
   img.header.stamp = stamp;
@@ -422,12 +476,12 @@ void ToFSensor::publish_distData(const tofcore::Measurement_T &frame, ros::Publi
   img.is_bigendian = 1;
   auto distance_bv = frame.distance();
   img.data.resize(distance_bv.size() * sizeof(distance_bv.data()[0]));
-  uint8_t* dist_begin = (uint8_t*)distance_bv.data();
+  uint8_t *dist_begin = (uint8_t *)distance_bv.data();
   std::copy_n(dist_begin, img.data.size(), img.data.begin());
   pub.publish(img);
 }
 
-void ToFSensor::publish_pointCloud(const tofcore::Measurement_T &frame, ros::Publisher &pub,ros::Publisher &cust_pub, const ros::Time& stamp)
+void ToFSensor::publish_pointCloud(const tofcore::Measurement_T &frame, ros::Publisher &pub, ros::Publisher &cust_pub, const ros::Time &stamp)
 {
   tofcore_ros1::TofcorePointCloud2 cloud_msg{};
   cloud_msg.header.stamp = stamp;
@@ -437,12 +491,32 @@ void ToFSensor::publish_pointCloud(const tofcore::Measurement_T &frame, ros::Pub
   cloud_msg.point_cloud.is_dense = true;
   cloud_msg.point_cloud.is_bigendian = false;
 
-  //Adding this to the message for the auto exposure node
-  //Need to check if it exists because this is optional value
+  // Adding this to the message for the auto exposure node
+  // Need to check if it exists because this is optional value
   if (frame.integration_times())
   {
-    auto integration_times=*std::move(frame.integration_times());
-    cloud_msg.integration_time=integration_times.at(0);
+    auto integration_times = *std::move(frame.integration_times());
+    cloud_msg.integration_time = integration_times.at(0);
+  }
+
+  cv::Mat dist_frame = cv::Mat(frame.height(), frame.width(), CV_16UC1, (void *)frame.distance().begin());
+
+  if (this->median_filter)
+  {
+    // cv::Mat src = cv::Mat::zeros(dist_frame.size(), CV_16U);
+    // cv::Mat dst = cv::Mat::zeros(dist_frame.size(), CV_16U);
+    cv::medianBlur(dist_frame, dist_frame, this->median_kernel);
+  }
+  if (this->bilateral_filter)
+  {
+    cv::Mat src = cv::Mat::zeros(dist_frame.size(), CV_32FC1);
+    cv::Mat dst = cv::Mat::zeros(dist_frame.size(), CV_32FC1);
+    dist_frame.convertTo(src, CV_32FC1);
+    cv::bilateralFilter(src, dst, this->bilateral_kernel, this->bilateral_color, this->bilateral_space);
+    dst.convertTo(dist_frame, CV_16UC1);
+  }
+  if (this->temporal_filter)
+  {
   }
 
   sensor_msgs::PointCloud2Modifier modifier(cloud_msg.point_cloud);
@@ -455,7 +529,7 @@ void ToFSensor::publish_pointCloud(const tofcore::Measurement_T &frame, ros::Pub
       "amplitude", 1, sensor_msgs::PointField::UINT16,
       "ambient", 1, sensor_msgs::PointField::INT16,
       "valid", 1, sensor_msgs::PointField::UINT8,
-      "distance", 1, sensor_msgs::PointField::UINT16); //TODO: do we need phase here?
+      "distance", 1, sensor_msgs::PointField::UINT16); // TODO: do we need phase here?
 
   // Note: For some reason setPointCloudFields doesn't set row_step
   //      and resets msg height and m_width so setup them here.
@@ -471,42 +545,55 @@ void ToFSensor::publish_pointCloud(const tofcore::Measurement_T &frame, ros::Pub
   sensor_msgs::PointCloud2Iterator<uint8_t> it_valid(cloud_msg.point_cloud, "valid");
   sensor_msgs::PointCloud2Iterator<uint16_t> it_phase(cloud_msg.point_cloud, "distance");
 
-  auto it_d = frame.distance().begin();
+  auto it_d = (const unsigned short *)dist_frame.datastart;
   auto it_a = frame.amplitude().begin();
   uint32_t count = 0;
-  while (it_d != frame.distance().end())
+  while (it_d != (const unsigned short *)dist_frame.dataend)
   {
-    auto distance = *it_d;
-    auto y = count / frame.width();
-    auto x = count % frame.width();
-    int valid = 0;
-    double px, py, pz;
-    px = py = pz = 0.1;
-    if (distance > 0 && distance < 64000)
+    if (*it_a < this->min_amplitude)
     {
-      cartesianTransform_.transformPixel(x, y, distance, px, py, pz);
-      px /= 1000.0; // mm -> m
-      py /= 1000.0; // mm -> m
-      pz /= 1000.0; // mm -> m
-      valid = 1;
-    }
-
-    *it_x = px;
-    *it_y = py;
-    *it_z = pz;
-    if (frame.type() == tofcore::Measurement_T::DataType::DISTANCE_AMPLITUDE)
-    {
-      *it_amplitude = *it_a;
+      *it_x = std::numeric_limits<float>::quiet_NaN();
+      *it_y = std::numeric_limits<float>::quiet_NaN();
+      *it_z = std::numeric_limits<float>::quiet_NaN();
+      *it_amplitude = std::numeric_limits<short unsigned int>::quiet_NaN();
       it_a += 1;
+      *it_ambient = std::numeric_limits<short int>::quiet_NaN();
+      *it_phase = std::numeric_limits<short unsigned int>::quiet_NaN();
+      *it_valid = std::numeric_limits<unsigned char>::quiet_NaN();
     }
     else
     {
-      *it_amplitude = pz;
-    }
-    *it_ambient = 0;
-    *it_phase = distance;
-    *it_valid = valid;
+      auto distance = *it_d;
+      auto y = count / frame.width();
+      auto x = count % frame.width();
+      int valid = 0;
+      double px, py, pz;
+      px = py = pz = 0.1;
+      if (distance > 0 && distance < 64000)
+      {
+        cartesianTransform_.transformPixel(x, y, distance, px, py, pz);
+        px /= 1000.0; // mm -> m
+        py /= 1000.0; // mm -> m
+        pz /= 1000.0; // mm -> m
+        valid = 1;
+      }
 
+      *it_x = px;
+      *it_y = py;
+      *it_z = pz;
+      if (frame.type() == tofcore::Measurement_T::DataType::DISTANCE_AMPLITUDE)
+      {
+        *it_amplitude = *it_a;
+        it_a += 1;
+      }
+      else
+      {
+        *it_amplitude = pz;
+      }
+      *it_ambient = 0;
+      *it_phase = distance;
+      *it_valid = valid;
+    }
     ++it_x;
     ++it_y;
     ++it_z;
@@ -517,28 +604,29 @@ void ToFSensor::publish_pointCloud(const tofcore::Measurement_T &frame, ros::Pub
     ++count;
     it_d += 1;
   }
-  //This is dumb and redundant but I don't want to break rviz viewer
+  // This is dumb and redundant but I don't want to break rviz viewer
   pub.publish(cloud_msg.point_cloud);
   cust_pub.publish(cloud_msg);
 }
 
-
-void ToFSensor::publish_DCSData(const tofcore::Measurement_T &frame, const ros::Time& stamp)
+void ToFSensor::publish_DCSData(const tofcore::Measurement_T &frame, const ros::Time &stamp)
 {
 
-  //TODO Need to figure out the best way to publish image meta-data including:
-  //  modulation_frequency
-  //  integration_time
-  //  binning
-  //  vled_mv
-  //  chip_id
+  // TODO Need to figure out the best way to publish image meta-data including:
+  //   modulation_frequency
+  //   integration_time
+  //   binning
+  //   vled_mv
+  //   chip_id
   //
-  // Also need to figure out how to publish an ambient frame which will be required for use with the calibration app.
+  //  Also need to figure out how to publish an ambient frame which will be required for use with the calibration app.
   //
-  //Does feature/add-meta-data-publishers branch have work that should be used for this?
+  // Does feature/add-meta-data-publishers branch have work that should be used for this?
 
-  if(frame.type() == tofcore::Measurement_T::DataType::DCS) {
-    for(auto i = 0; i != 4; ++i) {
+  if (frame.type() == tofcore::Measurement_T::DataType::DCS)
+  {
+    for (auto i = 0; i != 4; ++i)
+    {
       sensor_msgs::Image img;
       img.header.stamp = stamp;
       img.header.frame_id = "base_link";
@@ -550,9 +638,9 @@ void ToFSensor::publish_DCSData(const tofcore::Measurement_T &frame, const ros::
       img.step = img.width * frame.pixel_size();
       img.is_bigendian = 0;
       auto frame_size = img.step * img.height;
-      img.data.resize ((frame_size));
-      auto begin = reinterpret_cast<const uint8_t*>(frame.dcs(i).begin());
-      auto end = begin + (frame_size) ;
+      img.data.resize((frame_size));
+      auto begin = reinterpret_cast<const uint8_t *>(frame.dcs(i).begin());
+      auto end = begin + (frame_size);
       std::copy(begin, end, img.data.begin());
       pub_dcs_[i].publish(img);
     }
@@ -561,7 +649,7 @@ void ToFSensor::publish_DCSData(const tofcore::Measurement_T &frame, const ros::
 
 void ToFSensor::updateFrame(const tofcore::Measurement_T &frame)
 {
- // ROS_INFO("Updating Frame ");
+  // ROS_INFO("Updating Frame ");
   auto stamp = ros::Time::now();
   switch (frame.type())
   {

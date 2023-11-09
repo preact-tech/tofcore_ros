@@ -37,7 +37,6 @@ namespace py = pybind11;
 #define PyIPv4Interface (ImportIPv4Interface())
 #define PyIPv4Address (ImportIPv4Address())
 #define PyIPv4Settings (IPv4SettingsType())
-#define PyIPv4Endpoint (IPv4EndpointType())
 
 inline const py::module_& ImportCollections() {
     static const py::module_* ptr = new py::module_{py::module_::import("collections")};
@@ -71,17 +70,6 @@ inline const py::object& IPv4SettingsType() {
     return type;
 }
 
-inline const py::object& IPv4EndpointType() {
-    static const auto type = []() {
-        auto namedTuple_attr = PyNamedTuple;
-        py::list fields;
-        fields.append("address");
-        fields.append("port");
-        return namedTuple_attr("IPv4Endpoint", fields);
-    }();
-    return type;
-}
-
 /// @brief Wrap python callback with lambda that will catch exceptions and handle them safely
 /// @param py_callback client callback functor
 static void subscribeMeasurement(tofcore::Sensor& s, tofcore::Sensor::on_measurement_ready_t py_callback)
@@ -104,6 +92,7 @@ static void subscribeMeasurement(tofcore::Sensor& s, tofcore::Sensor::on_measure
 
 static auto getIPv4Settings(tofcore::Sensor& s)
 {
+    //Use static and a lambda to create the IPv4Settings namedtuple type only once.
     std::array<std::byte, 4> ipv4Address;
     std::array<std::byte, 4> ipv4Mask;
     std::array<std::byte, 4> ipv4Gateway;
@@ -115,7 +104,7 @@ static auto getIPv4Settings(tofcore::Sensor& s)
     }
     if(!result)
     {
-        throw std::runtime_error("An error ocurred while getting IPv4 settings");
+        throw std::runtime_error("An error occured while getting IPv4 settings");
     }
 
     std::stringstream if_ss;
@@ -166,65 +155,9 @@ static void setIPv4Settings(tofcore::Sensor &s, py::object& settings)
     }
     if(!ok)
     {
-        throw std::runtime_error("An error occurred setting IPv4 settings");
+        throw std::runtime_error("An error occcured setting sequencer version");
     }
 }
-
-
-static auto getIPMeasurementEndpoint(tofcore::Sensor &s)
-{
-
-    auto result = [&]() {
-        py::gil_scoped_release gsr;
-        return s.getIPMeasurementEndpoint();
-    } ();
-
-    if(!result)
-    {
-        throw std::runtime_error("An error ocurred while getting IP measurement endpoint");
-    }
-
-    auto ipv4Address = std::get<0>(*result);
-    auto port = std::get<1>(*result);
-
-    std::stringstream ss;
-    ss << (int)ipv4Address[0] << '.' << (int)ipv4Address[1] << '.' << (int)ipv4Address[2] << '.' << (int)ipv4Address[3];
-
-    return PyIPv4Endpoint(
-        PyIPv4Address(py::str(ss.str())), 
-        port);
-}
-
-
-static void setIPMeasurementEndpoint(tofcore::Sensor &s, py::object& endpoint)
-{
-    if(!py::isinstance(endpoint, PyIPv4Endpoint))
-    {
-        throw pybind11::type_error("IPv4MeasurementEndpoint must be of type pytofcore.IPv4Endpoint");
-    }
-    auto address = PyIPv4Address(endpoint.attr("address"));
-    auto port = py::int_(endpoint.attr("port"));
-
-    auto py_ip_to_array = [](const py::object& ip) -> std::array<std::byte, 4>
-    {
-        py::bytes bytes = ip.attr("packed");
-        auto sv = std::string_view(bytes);
-        return std::array<std::byte, 4>{std::byte(sv[0]), std::byte(sv[1]), std::byte(sv[2]), std::byte(sv[3])};
-    };
-
-    auto a = py_ip_to_array(address);
-    auto ok = false;
-    {
-        py::gil_scoped_release gsr;
-        ok = s.setIPMeasurementEndpoint(a, port);
-    }
-    if(!ok)
-    {
-        throw std::runtime_error("An error occurred setting IP measurement endpoint");
-    }
-}
-
-
 
 static auto getLensInfo(tofcore::Sensor& s)
 {
@@ -647,24 +580,11 @@ static auto jump_to_bootloader(tofcore::Sensor& s)
     s.jumpToBootloader();
 }
 
-auto durationToDuration(const float time_s)
-{
-    using namespace std::chrono;
-    using fsec = duration<float>;
-    return round<nanoseconds>(fsec{time_s});
-}
-
-static auto py_find_all_devices(double timeout_sec, std::size_t max_count)
-{
-    return tofcore::find_all_devices(durationToDuration(timeout_sec), max_count);
-}
-
 
 PYBIND11_MODULE(pytofcore, m) {
     m.doc() = "Sensor object that represents a connect to a TOF depth sensor.";
 
     m.attr("IPv4Settings") = PyIPv4Settings;
-    m.attr("IPv4Endpoint") = PyIPv4Endpoint;
 
     py::class_<tofcore::Sensor>(m, "Sensor")
         .def(py::init<const std::string&>(), py::arg("uri")=tofcore::DEFAULT_URI)
@@ -692,7 +612,6 @@ PYBIND11_MODULE(pytofcore, m) {
         .def_property("vflip", &vflip_get, &vflip_set, "State of the image vertical flip option (default False)")
         .def_property("modulation_frequency", &modulation_get, &modulation_set, "LED Modulation Frequency in kHz (default 24000)")        
         .def_property("ipv4_settings", &getIPv4Settings, &setIPv4Settings, "Set the IPv4 address, mask, and gateway")
-        .def_property("ip_measurement_endpoint", &getIPMeasurementEndpoint, &setIPMeasurementEndpoint, "The IP address and port measurement data is set to")
         .def_property("sensor_location", &getSensorLocation, &setSensorLocation, "The sensor's location")
         .def_property("sensor_name", &getSensorName, &setSensorName, "The sensor's name")
 
@@ -753,6 +672,6 @@ PYBIND11_MODULE(pytofcore, m) {
                        + "', serial_num:'" + d.serial_num + "', model:'" + d.model + "')";
             });
 
-    m.def("find_all_devices", &py_find_all_devices, py::arg("wait_time")=5, py::arg("max_count")=std::numeric_limits<std::size_t>::max(), "Get a list of all connected devices");
+    m.def("find_all_devices", &tofcore::find_all_devices, "Get a list of all connected devices");
 
 }

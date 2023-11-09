@@ -148,37 +148,6 @@ def test_ipv4_settings(dut: pytofcore.Sensor):
 
 
 @pytest.mark.functional
-def test_ip_measurement_endpoint(dut: pytofcore.Sensor):
-    '''Test the pytofcore.Sensor.ip_measurement_endpoint property
-
-    Verify that the measurement endpoint property can be properly set and retrived.
-    That the property only accepts a valid endpoint (which is tuple of IP address and port). 
-    '''
-
-    ep = dut.ip_measurement_endpoint
-    assert( isinstance(ep, pytofcore.IPv4Endpoint))
-    assert( isinstance(ep.address, ipaddress.IPv4Address))
-    assert( isinstance(ep.port, int))
-
-    with pytest.raises(TypeError, match="pytofcore.IPv4Endpoint"):
-        dut.ip_measurement_endpoint = None
-
-    with pytest.raises(ipaddress.AddressValueError, match=r"Expected 4 octets in 'None'"):
-        dut.ip_measurement_endpoint = pytofcore.IPv4Endpoint(None, None)
-
-    with pytest.raises(TypeError, match=r"int\(\) argument must be a string, a bytes-like object or a number, not 'NoneType'"):
-        dut.ip_measurement_endpoint = pytofcore.IPv4Endpoint(ep.address, None)
-
-    #Verify the measurement_endpoint can be set
-    dut.ip_measurement_endpoint = pytofcore.IPv4Endpoint(ep.address, ep.port)
-    assert ep == dut.ip_measurement_endpoint
-
-    #Verify the measurement_endpoint can be set using a string for address and port
-    dut.ip_measurement_endpoint = pytofcore.IPv4Endpoint(str(ep.address), str(ep.port))
-    assert ep == dut.ip_measurement_endpoint
-
-
-@pytest.mark.functional
 def test_meta_data_sensor_temperature(dut: pytofcore.Sensor):
     def callback(measurement: pytofcore.Measurement, **kwargs):
         with callback.mutex:

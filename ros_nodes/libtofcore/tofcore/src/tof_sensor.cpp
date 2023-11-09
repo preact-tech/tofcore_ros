@@ -62,7 +62,7 @@ struct Sensor::Impl
     {
         this->measurement_command_ = measurement_command;
 #if defined(_WIN32)
-        stream_via_polling_ = (dynamic_cast<SerialConnection*>(this->connection.get()) != nullptr);
+        stream_via_polling_ = true;
 #else
         stream_via_polling_ = false;
 #endif
@@ -188,10 +188,7 @@ std::optional<std::vector<uint16_t>> Sensor::getIntegrationTimes()
 
 bool Sensor::getLensInfo(std::vector<double>& rays_x, std::vector<double>& rays_y, std::vector<double>& rays_z)
 {
-    std::byte REQUEST_PIXEL_RAYS {1};
-    auto payload = send_receive_payload_t(&REQUEST_PIXEL_RAYS, 1);
-    //Increased timeout due to larger dataset (takes extra time over Ethernet)
-    auto result = this->send_receive(COMMAND_GET_LENS_INFO, payload, std::chrono::seconds(30));
+    auto result = this->send_receive(COMMAND_GET_LENS_INFO, (uint8_t)1);
 
     if (!result)
     {
@@ -514,35 +511,6 @@ bool Sensor:: getIPv4Settings(std::array<std::byte, 4>& adrs, std::array<std::by
         return false;
     }
 }
-
-bool Sensor::setIPMeasurementEndpoint(std::array<std::byte,4> address, uint16_t dataPort)
-{
-    std::byte payload[address.size() + sizeof(dataPort)];
-    std::copy(address.begin(), address.end(), std::begin(payload));
-    BE_Put(payload + address.size(), dataPort);
-    return this->send_receive(COMMAND_SET_DATA_IP_ADDRESS, {payload, sizeof(payload)}).has_value();
-}
-
-
-std::optional<std::tuple<std::array<std::byte, 4>, uint16_t>> Sensor::getIPMeasurementEndpoint()
-{
-    auto result = this->send_receive(COMMAND_GET_DATA_IP_ADDRESS);
-    if(result && result->size() >= 6)
-    {
-        const auto& payload = *result;
-        uint16_t port {};
-        uint32_t address {};
-        BE_Get(address, payload.data());
-        BE_Get(port, &payload[4]);
-
-        auto addr = std::array<std::byte, 4>();
-        std::copy_n((std::byte*)(&address), addr.size(), addr.begin());
-
-        return std::make_optional(std::make_tuple(addr, port));
-    }
-    return std::nullopt;
-}
-
 
 uint16_t Sensor::getProtocolVersion() const
 {

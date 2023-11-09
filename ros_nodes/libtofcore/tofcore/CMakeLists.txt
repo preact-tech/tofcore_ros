@@ -46,9 +46,6 @@ target_sources(tofcore
     src/comm_ip/ip_connection.cpp
     src/comm_ip/tcp_connection.cpp
     src/comm_ip/udp_server.cpp
-    src/device_discovery/ip_device_discovery.cpp
-    src/device_discovery/usb_device_discovery.cpp
-    src/device_discovery/video_device_discovery.cpp
     src/device_discovery/device_discovery.cpp
     src/measurement.cpp
     src/tof_sensor.cpp
@@ -58,9 +55,6 @@ target_sources(tofcore
 )
 
 target_link_libraries(tofcore PRIVATE Boost::boost)
-if (WIN32)
-  target_link_libraries (tofcore PRIVATE iphlpapi)
-endif ()
 target_link_libraries(tofcore PRIVATE usbp)
 
 #Set target properties
