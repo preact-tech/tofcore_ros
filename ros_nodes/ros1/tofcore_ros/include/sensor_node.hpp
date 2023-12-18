@@ -45,8 +45,9 @@ private:
   tofcore::CartesianTransform cartesianTransform_;
   ros::NodeHandle n_;
   std::string sensor_location_;
-  dynamic_reconfigure::Server<tofcore_ros1::tofcoreConfig> server_;
-  dynamic_reconfigure::Server<tofcore_ros1::tofcoreConfig>::CallbackType f_;
+  boost::recursive_mutex config_mutex;
+  //dynamic_reconfigure::Server<tofcore_ros1::tofcoreConfig> server_;
+  //dynamic_reconfigure::Server<tofcore_ros1::tofcoreConfig>::CallbackType f_;
   tofcore_ros1::tofcoreConfig oldConfig_;
   // Filter parameters
   bool median_filter;

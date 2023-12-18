@@ -74,51 +74,26 @@ ToFSensor::ToFSensor(ros::NodeHandle nh)
 
   interface_.reset(new tofcore::Sensor(1, "/dev/ttyACM0"));
   interface_->stopStream();
+  dynamic_reconfigure::Server<tofcore_ros1::tofcoreConfig>::CallbackType f_ = boost::bind(&ToFSensor::on_set_parameters_callback, this, boost::placeholders::_1, boost::placeholders::_2);
+  dynamic_reconfigure::Server<tofcore_ros1::tofcoreConfig> *server_ = new dynamic_reconfigure::Server<tofcore_ros1::tofcoreConfig>(this->config_mutex, this->n_);
+  server_->setCallback(f_);
 
-  // Setup parameter server call back
-  (void)interface_->subscribeMeasurement([&](std::shared_ptr<tofcore::Measurement_T> f) -> void
-                                         { updateFrame(*f); });
-  this->f_ = boost::bind(&ToFSensor::on_set_parameters_callback, this, boost::placeholders::_1, boost::placeholders::_2);
-  this->server_.setCallback(this->f_);
-
-  // Get sensor info
-  TofComm::versionData_t versionData{};
-  interface_->getSensorInfo(versionData);
-
-  // use generic lens transform always
   std::vector<double> rays_x, rays_y, rays_z;
   interface_->getLensInfo(rays_x, rays_y, rays_z);
   cartesianTransform_.initLensTransform(m_width, HEIGHT, rays_x, rays_y, rays_z);
 
   // Setup ROS parameters
-  ROS_INFO("Reading info from sensor and setting parameters");
+  tofcore_ros1::tofcoreConfig config;
+  server_->getConfigDefault(config);
 
-  // //Read Only params
-  ros::param::set(API_VERSION, versionData.m_softwareSourceID);
-  ros::param::set(CHIP_ID, std::to_string(versionData.m_sensorChipId));
-  ros::param::set(MODEL_NAME, versionData.m_modelName);
-  ros::param::set(SW_VERSION, versionData.m_softwareVersion);
-  ros::param::set(SENSOR_URL, "/dev/ttyACM0");
+  // Get sensor info
+  TofComm::versionData_t versionData{};
+  interface_->getSensorInfo(versionData);
 
-  // Configurable params
-  ros::param::set(CAPTURE_MODE, "distance_amplitude");
-  ros::param::set(STREAMING_STATE, true);
-  ros::param::set(MODULATION_FREQUENCY, 12);
-  ros::param::set(DISTANCE_OFFSET, 0);
-  ros::param::set(MINIMUM_AMPLITUDE, 0);
-  ros::param::set(FLIP_HORIZONTAL, false);
-  ros::param::set(FLIP_VERITCAL, false);
-  ros::param::set(BINNING, false);
-
-  // Filter parameters
-  ros::param::set(MEDIAN_FILTER, true);
-  ros::param::set(MEDIAN_KERNEL, 3);
-  ros::param::set(BILATERAL_FILTER, true);
-  ros::param::set(BILATERAL_KERNEL, 5);
-  ros::param::set(BILATERAL_COLOR, 75);
-  ros::param::set(BILATERAL_SPACE, 75);
-  // ros::param::set(TEMPORAL_FILTER, true);
-  // ros::param::set(TEMPORAL_ALPHA, 3);
+  config.api_version = versionData.m_softwareSourceID;
+  config.chip_id = std::to_string(versionData.m_sensorChipId);
+  config.model_name = versionData.m_modelName;
+  config.sw_version = versionData.m_softwareVersion;
 
   // Reading optional values from sensor
   std::optional<std::string> init_name = interface_->getSensorName();
@@ -126,25 +101,31 @@ ToFSensor::ToFSensor(ros::NodeHandle nh)
   std::optional<std::vector<short unsigned int>> init_integration = interface_->getIntegrationTimes();
 
   if (init_name)
-    ros::param::set(SENSOR_NAME, *init_name);
+    config.sensor_name = *init_name;
   else
-    ros::param::set(SENSOR_NAME, "Mojave");
+    config.sensor_name = "Mojave";
 
   if (init_location)
   {
-    ros::param::set(SENSOR_LOCATION, *init_location);
+    config.sensor_location = *init_location;
     this->sensor_location_ = *init_location;
   }
   else
   {
-    ros::param::set(SENSOR_LOCATION, "Unknown");
+    config.sensor_location = "Unknown";
     this->sensor_location_ = "Unknown";
   }
 
   if (init_integration)
-    ros::param::set(INTEGRATION_TIME, (*init_integration).at(0));
+    config.integration_time = (*init_integration).at(0);
   else
-    ros::param::set(INTEGRATION_TIME, 500);
+    config.integration_time = 500;
+
+  server_->updateConfig(config);
+
+  // Setup parameter server call back
+  (void)interface_->subscribeMeasurement([&](std::shared_ptr<tofcore::Measurement_T> f) -> void
+                                         { updateFrame(*f); });
 
   ROS_INFO("Initialized");
 }
@@ -345,7 +326,7 @@ void ToFSensor::apply_minimum_amplitude_param(const std::string &parameter, tofc
   int value;
   value = config.minimum_amplitude;
   ROS_INFO("Handling parameter \"%s\" : %d", parameter.c_str(), value);
-  this->min_amplitude=value;
+  this->min_amplitude = value;
   interface_->setMinAmplitude(value);
 }
 void ToFSensor::apply_flip_horizontal_param(const std::string &parameter, tofcore_ros1::tofcoreConfig &config)
