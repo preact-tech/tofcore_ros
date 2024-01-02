@@ -58,10 +58,13 @@ bridge: build ##	Build the ROS1 bridge, build environment must have both ROS1 an
 .PHONY: clean
 clean:
 	rm -rf build install log ros2/build ros2/install ros2/log ros1/build ros1/tofcore_ros/build ros1/install ros1/log
-	rm -r -f build
+	rm -r -f ros2/build
 	rm -r -f dist
-	rm -r -f install
-	rm -r -f log
+	rm -r -f ros2/install
+	rm -r -f ros2/log
+	rm -r -f ros1/build
+	rm -r -f ros1/install
+	rm -r -f ros1/log
 	rm -r -f target
 	rm -r -f ros2/debian
 	rm -r -f ros2/.obj-x86_64-linux-gnu
