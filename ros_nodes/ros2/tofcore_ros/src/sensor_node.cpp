@@ -31,7 +31,6 @@ constexpr auto FLIP_VERITCAL = "flip_vertical";
 constexpr auto BINNING = "binning";
 constexpr auto SENSOR_NAME = "sensor_name";
 constexpr auto SENSOR_LOCATION = "sensor_location";
-constexpr auto DISCOVERY_FILTER = "discovery_filter"; // TODO: Implement this
 
 /// Quick helper function that return true if the string haystack starts with the string needle
 bool begins_with(const std::string &needle, const std::string &haystack)
