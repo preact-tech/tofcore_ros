@@ -20,8 +20,8 @@ find_package(rosidl_typesupport_cpp REQUIRED)
 find_package(rosidl_default_generators REQUIRED)
 
 
-find_package(ToFCore)
-if(NOT TARGET ToFCore::ToFCore)
+find_package(ToFCore QUIET)
+if(NOT TARGET ToFCore::ToFCore )
   if (EXISTS "${CMAKE_SOURCE_DIR}/libtofcore" AND EXISTS "${CMAKE_SOURCE_DIR}/libtofcore/CMakeLists.txt")
     set(BUILD_PYTHON_BINDINGS OFF)
     add_subdirectory(libtofcore/tofcore)
