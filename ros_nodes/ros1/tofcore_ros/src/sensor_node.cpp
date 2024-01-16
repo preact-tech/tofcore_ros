@@ -41,6 +41,7 @@ constexpr auto BILATERAL_COLOR = "/tof_sensor/bilateral_color";
 constexpr auto BILATERAL_SPACE = "/tof_sensor/bilateral_space";
 constexpr auto TEMPORAL_FILTER = "/tof_sensor/temporal_filter";
 constexpr auto TEMPORAL_ALPHA = "/tof_sensor/temporal_alpha";
+std::vector<double> rays_x, rays_y, rays_z;
 
 /// Quick helper function that return true if the string haystack starts with the string needle
 bool begins_with(const std::string &needle, const std::string &haystack)
@@ -78,7 +79,6 @@ ToFSensor::ToFSensor(ros::NodeHandle nh)
   dynamic_reconfigure::Server<tofcore_ros1::tofcoreConfig> *server_ = new dynamic_reconfigure::Server<tofcore_ros1::tofcoreConfig>(this->config_mutex, this->n_);
   server_->setCallback(f_);
 
-  std::vector<double> rays_x, rays_y, rays_z;
   interface_->getLensInfo(rays_x, rays_y, rays_z);
   cartesianTransform_.initLensTransform(m_width, HEIGHT, rays_x, rays_y, rays_z);
 
@@ -552,7 +552,10 @@ void ToFSensor::publish_pointCloud(const tofcore::Measurement_T &frame, ros::Pub
       px = py = pz = 0.1;
       if (distance > 0 && distance < 64000)
       {
-        cartesianTransform_.transformPixel(x, y, distance, px, py, pz);
+        if (frame.width()==160)
+          cartesianTransform_.transformPixel(2 * x, 2 * y, distance, px, py, pz);
+        else
+          cartesianTransform_.transformPixel( x,  y, distance, px, py, pz);
         px /= 1000.0; // mm -> m
         py /= 1000.0; // mm -> m
         pz /= 1000.0; // mm -> m
