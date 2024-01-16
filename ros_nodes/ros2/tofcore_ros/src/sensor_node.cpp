@@ -72,7 +72,7 @@ ToFSensor::ToFSensor()
   {
     interface_.reset(new tofcore::Sensor(1, uri_to_find.as_string()));
     RCLCPP_INFO(this->get_logger(), "Sensor URI Provided, using device connection uri: \"%s\"", uri_to_find.as_string().c_str());
-    //rclcpp::Parameter str_param(SENSOR_URI, uri_to_find);
+    // rclcpp::Parameter str_param(SENSOR_URI, uri_to_find);
     this->set_parameter(uri_to_find);
   }
   else if (loc_to_find.as_string() != "-1") // TODO: Find smarter way to do this check. We can decalre parameter without value and will get "not set" when querying, not sure how to leverage this?
@@ -185,9 +185,8 @@ ToFSensor::ToFSensor()
   auto params = this->get_parameters(this->list_parameters({}, 1).names);
   this->on_set_parameters_callback(params);
 
-    (void)interface_->subscribeMeasurement([&](std::shared_ptr<tofcore::Measurement_T> f) -> void
+  (void)interface_->subscribeMeasurement([&](std::shared_ptr<tofcore::Measurement_T> f) -> void
                                          { updateFrame(*f); });
-
 }
 
 rcl_interfaces::msg::SetParametersResult ToFSensor::on_set_parameters_callback(
@@ -602,7 +601,10 @@ void ToFSensor::publish_pointCloud(const tofcore::Measurement_T &frame, rclcpp::
     px = py = pz = 0.1;
     if (distance > 0 && distance < 64000)
     {
-      cartesianTransform_.transformPixel(x, y, distance, px, py, pz);
+      if (frame.width() == 160)
+        cartesianTransform_.transformPixel(2 * x, 2 * y, distance, px, py, pz);
+      else
+        cartesianTransform_.transformPixel(x, y, distance, px, py, pz);
       px /= 1000.0; // mm -> m
       py /= 1000.0; // mm -> m
       pz /= 1000.0; // mm -> m
