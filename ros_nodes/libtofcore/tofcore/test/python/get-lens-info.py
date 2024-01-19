@@ -3,7 +3,7 @@ import sys
 
 import pytofcore
 
-sensor = pytofcore.Sensor(protocol_version=1)
+sensor = pytofcore.Sensor()
 
 def print_lens_info():
     lensInfo = sensor.lens_info

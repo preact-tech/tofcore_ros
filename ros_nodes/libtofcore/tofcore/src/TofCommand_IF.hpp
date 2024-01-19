@@ -22,6 +22,7 @@ constexpr uint16_t COMMAND_GET_DISTANCE             = 0x03;
 constexpr uint16_t COMMAND_STOP_STREAM              = 0x06;
 constexpr uint16_t COMMAND_GET_DCS                  = 0x07;
 constexpr uint16_t COMMAND_GET_INT_TIMES            = 0x08;
+constexpr uint16_t COMMAND_GET_STREAMING_STATE      = 0x09;
 constexpr uint16_t COMMAND_GET_DCS_AMBIENT          = 0x0B;
     constexpr std::uint8_t SINGLE_MEASUREMENT       = 0;
     constexpr std::uint8_t CONTINUOUS_MEASUREMENT   = 1;
@@ -32,7 +33,9 @@ constexpr uint16_t COMMAND_SET_MIN_AMPLITUDE        = 0x15;
 
 constexpr uint16_t COMMAND_SET_MODULATION           = 0x17;
 constexpr uint16_t COMMAND_SET_BINNING              = 0x18;
-constexpr uint16_t COMMAND_SET_HDR                  = 0x19;
+
+constexpr uint16_t COMMAND_SET_VSM                  = 0x1B;
+constexpr uint16_t COMMAND_GET_VSM                  = 0x1C;
 
 constexpr uint16_t COMMAND_GET_DATA_IP_ADDRESS      = 0x25;
 constexpr uint16_t COMMAND_SET_DATA_IP_ADDRESS      = 0x26;

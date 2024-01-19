@@ -31,6 +31,8 @@ constexpr auto BINNING = "/tof_sensor/binning";
 constexpr auto SENSOR_NAME = "/tof_sensor/sensor_name";
 constexpr auto SENSOR_LOCATION = "/tof_sensor/sensor_location";
 constexpr auto DISCOVERY_FILTER = "/tof_sensor/discovery_filter"; // TODO: Implement this
+constexpr auto HDR_ENABLE = "/tof_sensor/hdr_enable";
+constexpr auto HDR_INTEGRATIONS = "/tof_sensor/hdr_integrations";
 
 // Filter parameters
 constexpr auto MEDIAN_FILTER = "/tof_sensor/median_filter";
@@ -73,7 +75,7 @@ ToFSensor::ToFSensor(ros::NodeHandle nh)
   sensor_temperature_bl = this->n_.advertise<sensor_msgs::Temperature>("sensor_temperature_bl", pub_queue);
   sensor_temperature_br = this->n_.advertise<sensor_msgs::Temperature>("sensor_temperature_br", pub_queue);
 
-  interface_.reset(new tofcore::Sensor(1, "/dev/ttyACM0"));
+  interface_.reset(new tofcore::Sensor("/dev/ttyACM0"));
   interface_->stopStream();
   dynamic_reconfigure::Server<tofcore_ros1::tofcoreConfig>::CallbackType f_ = boost::bind(&ToFSensor::on_set_parameters_callback, this, boost::placeholders::_1, boost::placeholders::_2);
   dynamic_reconfigure::Server<tofcore_ros1::tofcoreConfig> *server_ = new dynamic_reconfigure::Server<tofcore_ros1::tofcoreConfig>(this->config_mutex, this->n_);
@@ -98,7 +100,7 @@ ToFSensor::ToFSensor(ros::NodeHandle nh)
   // Reading optional values from sensor
   std::optional<std::string> init_name = interface_->getSensorName();
   std::optional<std::string> init_location = interface_->getSensorLocation();
-  std::optional<std::vector<short unsigned int>> init_integration = interface_->getIntegrationTimes();
+  std::optional<short unsigned int> init_integration = interface_->getIntegrationTime();
 
   if (init_name)
     config.sensor_name = *init_name;
@@ -117,7 +119,7 @@ ToFSensor::ToFSensor(ros::NodeHandle nh)
   }
 
   if (init_integration)
-    config.integration_time = (*init_integration).at(0);
+    config.integration_time = (*init_integration);
   else
     config.integration_time = 500;
 
@@ -221,6 +223,20 @@ void ToFSensor::on_set_parameters_callback(tofcore_ros1::tofcoreConfig &config, 
       int value = config.bilateral_space;
       ROS_INFO("Handling parameter \"%s\" : %d", parameter.c_str(), value);
       this->bilateral_space = value;
+    }
+    else if (parameter == HDR_ENABLE && config.hdr_enable != this->oldConfig_.hdr_enable)
+    {
+      bool value = config.hdr_enable;
+      ROS_INFO("Handling parameter \"%s\" : %s", parameter.c_str(), (value ? "true" : "false"));
+      this->hdr_enable = value;
+      this->apply_vsm_param(parameter, config);
+    }
+    else if (parameter == HDR_INTEGRATIONS && config.hdr_integrations != this->oldConfig_.hdr_integrations)
+    {
+      std::string value = config.hdr_integrations;
+      ROS_INFO("Handling parameter \"%s\" : %s", parameter.c_str(), value.c_str());
+      this->hdr_integrations = value;
+      this->apply_vsm_param(parameter, config);
     }
     // else if (parameter == TEMPORAL_FILTER && config.temporal_filter != this->oldConfig_.temporal_filter)
     // {
@@ -371,6 +387,64 @@ void ToFSensor::apply_sensor_location_param(const std::string &parameter, tofcor
   interface_->storeSettings();
   this->sensor_location_ = value;
 }
+void ToFSensor::apply_vsm_param(const std::string &parameter, tofcore_ros1::tofcoreConfig &config)
+{
+  auto value = config.hdr_enable;
+
+  ROS_INFO("Handling parameter \"%s\" : %s", parameter.c_str(), (value ? "true" : "false"));
+
+  std::vector<std::string> integration_times;
+  boost::split(integration_times, config.hdr_integrations, boost::is_any_of(", "), boost::token_compress_on);
+
+  TofComm::VsmControl_T vsmControl{};
+  if (value == true)
+  {
+    ROS_INFO("Setting integration times to: %s", config.hdr_integrations.c_str());
+
+    vsmControl.m_numberOfElements = integration_times.size();
+    ROS_INFO("VSM Elements: %d", vsmControl.m_numberOfElements);
+
+    this->hdr_count = integration_times.size();
+    uint16_t modulationFreqKhz = config.modulation_frequency;
+    for (long unsigned int n = 0; n < this->hdr_count; ++n)
+    {
+      try
+      {
+        vsmControl.m_elements[n].m_integrationTimeUs = std::stoi(integration_times[n]);
+        ROS_INFO("VSM Element %ld : %d", n, vsmControl.m_elements[n].m_integrationTimeUs);
+      }
+      catch (std::invalid_argument &e)
+      {
+        // if no conversion could be performed
+        ROS_INFO("Invalid inntegration time argument, defaulting to 500us");
+        vsmControl.m_elements[n].m_integrationTimeUs = 500;
+      }
+      catch (std::out_of_range &e)
+      {
+        // if the converted value would fall out of the range of the result type
+        // or if the underlying function (std::strtol or std::strtoull) sets errno
+        // to ERANGE.
+        ROS_INFO("Out of range, defaulting to 500us");
+        vsmControl.m_elements[n].m_integrationTimeUs = 500;
+      }
+      catch (...)
+      {
+        // everything else
+        ROS_INFO("Some other error, defaulting to 500us");
+        vsmControl.m_elements[n].m_integrationTimeUs = 500;
+      }
+      vsmControl.m_elements[n].m_modulationFreqKhz = modulationFreqKhz;
+    }
+  }
+  else
+  {
+    vsmControl.m_numberOfElements = 0;
+  }
+  interface_->setVsm(vsmControl);
+  std::optional<TofComm::VsmControl_T> vsmControlOut = interface_->getVsmSettings();
+  if (vsmControlOut)
+    ROS_INFO("VSM Elements Result: %d", vsmControlOut->m_numberOfElements);
+}
 void ToFSensor::publish_tempData(const tofcore::Measurement_T &frame, const ros::Time &stamp)
 {
   const std::array<float, 4> defaultTemps{0.0, 0.0, 0.0, 0.0};
@@ -474,10 +548,10 @@ void ToFSensor::publish_pointCloud(const tofcore::Measurement_T &frame, ros::Pub
 
   // Adding this to the message for the auto exposure node
   // Need to check if it exists because this is optional value
-  if (frame.integration_times())
+  if (frame.integration_time())
   {
-    auto integration_times = *std::move(frame.integration_times());
-    cloud_msg.integration_time = integration_times.at(0);
+    auto integration_time = *std::move(frame.integration_time());
+    cloud_msg.integration_time = integration_time;
   }
 
   cv::Mat dist_frame = cv::Mat(frame.height(), frame.width(), CV_16UC1, (void *)frame.distance().begin());
@@ -552,10 +626,10 @@ void ToFSensor::publish_pointCloud(const tofcore::Measurement_T &frame, ros::Pub
       px = py = pz = 0.1;
       if (distance > 0 && distance < 64000)
       {
-        if (frame.width()==160)
+        if (frame.width() == 160)
           cartesianTransform_.transformPixel(2 * x, 2 * y, distance, px, py, pz);
         else
-          cartesianTransform_.transformPixel( x,  y, distance, px, py, pz);
+          cartesianTransform_.transformPixel(x, y, distance, px, py, pz);
         px /= 1000.0; // mm -> m
         py /= 1000.0; // mm -> m
         pz /= 1000.0; // mm -> m
@@ -593,6 +667,189 @@ void ToFSensor::publish_pointCloud(const tofcore::Measurement_T &frame, ros::Pub
   cust_pub.publish(cloud_msg);
 }
 
+void ToFSensor::publish_pointCloudHDR(const tofcore::Measurement_T &frame, ros::Publisher &pub, ros::Publisher &cust_pub, ros::Publisher &pub_amp, ros::Publisher &pub_dist, const ros::Time &stamp)
+{
+
+  int frame_height = std::get<1>(this->hdr_frames[0]).rows;
+  int frame_width = std::get<1>(this->hdr_frames[0]).cols;
+
+  cv::Mat dist_frame = cv::Mat(frame_height, frame_width, CV_16UC1, cv::Scalar(0));
+  cv::Mat amp_frame = cv::Mat(frame_height, frame_width, CV_16UC1, cv::Scalar(0));
+
+  for (long unsigned int n = 0; n < this->hdr_count; ++n)
+  {
+    auto it_a_dst = (unsigned short *)amp_frame.datastart;
+    auto it_a_src = (unsigned short *)std::get<1>(this->hdr_frames[n]).datastart;
+    auto it_d_dst = (unsigned short *)dist_frame.datastart;
+    auto it_d_src = (unsigned short *)std::get<0>(this->hdr_frames[n]).datastart;
+    while (it_a_dst != (const unsigned short *)amp_frame.dataend)
+    {
+      if (*it_a_src > *it_a_dst && *it_a_src < this->saturation_thresh)
+      {
+        *it_a_dst = *it_a_src;
+        *it_d_dst = *it_d_src;
+      }
+      ++it_a_dst;
+      ++it_a_src;
+      ++it_d_dst;
+      ++it_d_src;
+    }
+  }
+
+  tofcore_ros1::TofcorePointCloud2 cloud_msg{};
+  cloud_msg.header.stamp = stamp;
+  cloud_msg.header.frame_id = "base_link";
+  cloud_msg.point_cloud.header.stamp = stamp;
+  cloud_msg.point_cloud.header.frame_id = "base_link";
+  cloud_msg.point_cloud.is_dense = true;
+  cloud_msg.point_cloud.is_bigendian = false;
+  // Adding this to the message for the auto exposure node
+  // Need to check if it exists because this is optional value
+  // if (this->hdr_frames[0]->integration_time())
+  // {
+  //   auto integration_times = *std::move(this->hdr_frames[0]->integration_time());
+  //   cloud_msg.integration_time = integration_times;
+  // }
+
+  if (this->median_filter)
+  {
+    // cv::Mat src = cv::Mat::zeros(dist_frame.size(), CV_16U);
+    // cv::Mat dst = cv::Mat::zeros(dist_frame.size(), CV_16U);
+    cv::medianBlur(dist_frame, dist_frame, this->median_kernel);
+  }
+  if (this->bilateral_filter)
+  {
+    cv::Mat src = cv::Mat::zeros(dist_frame.size(), CV_32FC1);
+    cv::Mat dst = cv::Mat::zeros(dist_frame.size(), CV_32FC1);
+    dist_frame.convertTo(src, CV_32FC1);
+    cv::bilateralFilter(src, dst, this->bilateral_kernel, this->bilateral_color, this->bilateral_space);
+    dst.convertTo(dist_frame, CV_16UC1);
+  }
+  // if (this->temporal_filter)
+  // {
+  // }
+
+  sensor_msgs::PointCloud2Modifier modifier(cloud_msg.point_cloud);
+  modifier.resize(frame_height * frame_width);
+  modifier.setPointCloud2Fields(
+      7,
+      "x", 1, sensor_msgs::PointField::FLOAT32,
+      "y", 1, sensor_msgs::PointField::FLOAT32,
+      "z", 1, sensor_msgs::PointField::FLOAT32,
+      "amplitude", 1, sensor_msgs::PointField::UINT16,
+      "ambient", 1, sensor_msgs::PointField::INT16,
+      "valid", 1, sensor_msgs::PointField::UINT8,
+      "distance", 1, sensor_msgs::PointField::UINT16); // TODO: do we need phase here?
+
+  // Note: For some reason setPointCloudFields doesn't set row_step
+  //      and resets msg height and m_width so setup them here.
+  cloud_msg.point_cloud.height = static_cast<uint32_t>(frame_height);
+  cloud_msg.point_cloud.width = static_cast<uint32_t>(frame_width);
+  cloud_msg.point_cloud.row_step = frame_width * 19; // 19 is the size in bytes of all the point cloud fields
+
+  sensor_msgs::PointCloud2Iterator<float> it_x(cloud_msg.point_cloud, "x");
+  sensor_msgs::PointCloud2Iterator<float> it_y(cloud_msg.point_cloud, "y");
+  sensor_msgs::PointCloud2Iterator<float> it_z(cloud_msg.point_cloud, "z");
+  sensor_msgs::PointCloud2Iterator<uint16_t> it_amplitude(cloud_msg.point_cloud, "amplitude");
+  sensor_msgs::PointCloud2Iterator<int16_t> it_ambient(cloud_msg.point_cloud, "ambient");
+  sensor_msgs::PointCloud2Iterator<uint8_t> it_valid(cloud_msg.point_cloud, "valid");
+  sensor_msgs::PointCloud2Iterator<uint16_t> it_phase(cloud_msg.point_cloud, "distance");
+
+  auto it_d = (const unsigned short *)dist_frame.datastart;
+  auto it_a = (const unsigned short *)amp_frame.datastart;
+  uint32_t count = 0;
+  while (it_d != (const unsigned short *)dist_frame.dataend)
+  {
+    if (*it_a < this->min_amplitude)
+    {
+      *it_x = std::numeric_limits<float>::quiet_NaN();
+      *it_y = std::numeric_limits<float>::quiet_NaN();
+      *it_z = std::numeric_limits<float>::quiet_NaN();
+      *it_amplitude = std::numeric_limits<short unsigned int>::quiet_NaN();
+      it_a += 1;
+      *it_ambient = std::numeric_limits<short int>::quiet_NaN();
+      *it_phase = std::numeric_limits<short unsigned int>::quiet_NaN();
+      *it_valid = std::numeric_limits<unsigned char>::quiet_NaN();
+    }
+    else
+    {
+      auto distance = *it_d;
+      auto y = count / frame_width;
+      auto x = count % frame_width;
+      int valid = 0;
+      double px, py, pz;
+      px = py = pz = 0.1;
+      if (distance > 0 && distance < 64000)
+      {
+        if (frame_width == 160)
+          cartesianTransform_.transformPixel(2 * x, 2 * y, distance, px, py, pz);
+        else
+          cartesianTransform_.transformPixel(x, y, distance, px, py, pz);
+        px /= 1000.0; // mm -> m
+        py /= 1000.0; // mm -> m
+        pz /= 1000.0; // mm -> m
+        valid = 1;
+      }
+
+      *it_x = px;
+      *it_y = py;
+      *it_z = pz;
+      // if (hdr_frames[0]->type() == tofcore::Measurement_T::DataType::DISTANCE_AMPLITUDE)
+      {
+        *it_amplitude = *it_a;
+        it_a += 1;
+      }
+      // else
+      // {
+      //   *it_amplitude = pz;
+      // }
+      *it_ambient = 0;
+      *it_phase = distance;
+      *it_valid = valid;
+    }
+    ++it_x;
+    ++it_y;
+    ++it_z;
+    ++it_amplitude;
+    ++it_ambient;
+    ++it_phase;
+    ++it_valid;
+    ++count;
+    it_d += 1;
+  }
+  // This is dumb and redundant but I don't want to break rviz viewer
+  pub.publish(cloud_msg.point_cloud);
+  cust_pub.publish(cloud_msg);
+
+  sensor_msgs::Image dist_img;
+  dist_img.header.stamp = stamp;
+  dist_img.header.frame_id = "base_link";
+  dist_img.height = static_cast<uint32_t>(frame_height);
+  dist_img.width = static_cast<uint32_t>(frame_width);
+  dist_img.encoding = sensor_msgs::image_encodings::MONO16;
+  dist_img.step = dist_img.width * frame.pixel_size();
+  dist_img.is_bigendian = 1;
+  auto distance_bv = frame.distance();
+  dist_img.data.resize(distance_bv.size() * sizeof(distance_bv.data()[0]));
+  uint8_t *dist_begin = (uint8_t *)dist_frame.datastart;
+  std::copy_n(dist_begin, dist_img.data.size(), dist_img.data.begin());
+
+  pub_dist.publish(dist_img);
+
+  sensor_msgs::Image amp_img;
+  amp_img.header.stamp = stamp;
+  amp_img.header.frame_id = "base_link";
+  amp_img.height = static_cast<uint32_t>(frame_height);
+  amp_img.width = static_cast<uint32_t>(frame_width);
+  amp_img.encoding = sensor_msgs::image_encodings::MONO16;
+  amp_img.step = amp_img.width * frame.pixel_size();
+  amp_img.is_bigendian = 1;
+  auto amplitude_bv = frame.amplitude();
+  amp_img.data.resize(amplitude_bv.size() * sizeof(amplitude_bv.data()[0]));
+  uint8_t *amp_begin = (uint8_t *)amp_frame.datastart;
+  std::copy_n(amp_begin, amp_img.data.size(), amp_img.data.begin());
+  pub_amp.publish(amp_img);
+}
 void ToFSensor::publish_DCSData(const tofcore::Measurement_T &frame, const ros::Time &stamp)
 {
 
@@ -651,10 +908,30 @@ void ToFSensor::updateFrame(const tofcore::Measurement_T &frame)
   }
   case tofcore::Measurement_T::DataType::DISTANCE_AMPLITUDE:
   {
-    publish_amplData(frame, pub_amplitude_, stamp);
-    publish_distData(frame, pub_distance_, stamp);
-    publish_pointCloud(frame, pub_pcd_, pub_cust_pcd_, stamp);
+    if (this->hdr_enable)
+    {
+
+      m.lock();
+      cv::Mat dist_frame = cv::Mat(frame.height(), frame.width(), CV_16UC1, (void *)frame.distance().begin());
+      cv::Mat amp_frame = cv::Mat(frame.height(), frame.width(), CV_16UC1, (void *)frame.amplitude().begin());
+
+      this->hdr_frames.push_back(std::make_tuple(dist_frame.clone(), amp_frame.clone()));
+      if (this->hdr_frames.size() == this->hdr_count)
+      {
+        publish_pointCloudHDR(frame, pub_pcd_, pub_cust_pcd_, pub_amplitude_, pub_distance_, stamp);
+        std::vector<std::tuple<cv::Mat, cv::Mat>>().swap(this->hdr_frames); // clear x reallocating
+      }
+      m.unlock();
+    }
+    else
+    {
+      publish_amplData(frame, pub_amplitude_, stamp);
+      publish_distData(frame, pub_distance_, stamp);
+      publish_pointCloud(frame, pub_pcd_, pub_cust_pcd_, stamp);
+    }
+
     publish_tempData(frame, stamp);
+
     break;
   }
   case tofcore::Measurement_T::DataType::AMPLITUDE:
