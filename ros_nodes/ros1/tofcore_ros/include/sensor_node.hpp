@@ -59,6 +59,10 @@ private:
   int bilateral_kernel =5;
   int bilateral_color=75;
   int bilateral_space=75;
+  int maximum_amplitude = 2000;
+  bool gradient_filter = true;
+  int gradient_kernel = 1;
+  int gradient_threshold = 1000;
   bool temporal_filter;
   int temporal_alpha;
   int min_amplitude=0;
