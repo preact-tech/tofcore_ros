@@ -4,6 +4,7 @@
 #include <cstdio>
 
 #include <tofcore/tof_sensor.hpp>
+#include <tofcore/Measurement_T.hpp>
 #include <tofcore/cartesian_transform.hpp>
 
 #include <chrono>
@@ -12,6 +13,7 @@
 #include <string>
 #include <vector>
 #include <optional>
+#include <boost/algorithm/string.hpp>
 
 #include <ros/ros.h>
 #include <sensor_msgs/PointCloud2.h>
@@ -25,6 +27,7 @@
 
 #include <opencv2/core.hpp>
 #include <opencv2/imgproc.hpp>
+#include<opencv2/opencv.hpp>
 
 /// ToFSensor ROS1 node class for interacting with a PreAct ToF sensor/camera
 class ToFSensor // : public ros::Node
@@ -56,9 +59,19 @@ private:
   int bilateral_kernel =5;
   int bilateral_color=75;
   int bilateral_space=75;
+  int maximum_amplitude = 2000;
+  bool gradient_filter = true;
+  int gradient_kernel = 1;
+  int gradient_threshold = 1000;
   bool temporal_filter;
   int temporal_alpha;
   int min_amplitude=0;
+  bool hdr_enable;
+  std::string hdr_integrations;
+  long unsigned int hdr_count;
+  std::vector<std::tuple<cv::Mat,cv::Mat>> hdr_frames;
+  int saturation_thresh=2000;
+  std::mutex m;
 
 public:
   /// Standard constructor
@@ -83,6 +96,8 @@ private:
 
   /// Publish a PointCloud using distance data in frame to the topic publisher pub with timestamp stamp.
   void publish_pointCloud(const tofcore::Measurement_T &frame, ros::Publisher &pub, ros::Publisher &cust_pub, const ros::Time &stamp);
+  /// Publish a PointCloud using distance data in frame to the topic publisher pub with timestamp stamp.
+  void publish_pointCloudHDR( const tofcore::Measurement_T &frame,ros::Publisher &pub, ros::Publisher &cust_pub,  ros::Publisher &pub_amp, ros::Publisher &pub_dist,const ros::Time &stamp);
 
   /// Publish a dcs data in frame to the four dcs topic publishers with timestamp stamp.
   void publish_DCSData(const tofcore::Measurement_T &frame, const ros::Time &stamp);
@@ -102,6 +117,7 @@ private:
   void apply_binning_param(const std::string &parameter, tofcore_ros1::tofcoreConfig &config);
   void apply_sensor_name_param(const std::string &parameter, tofcore_ros1::tofcoreConfig &config);
   void apply_sensor_location_param(const std::string &parameter, tofcore_ros1::tofcoreConfig &config);
+  void apply_vsm_param(const std::string &parameter, tofcore_ros1::tofcoreConfig &config);
 };
 
 #endif
