@@ -237,21 +237,18 @@ void ToFSensor::on_set_parameters_callback(tofcore_ros1::tofcoreConfig &config, 
     else if (parameter == GRADIENT_FILTER && config.gradient_filter != this->oldConfig_.gradient_filter)
     {
       bool value = config.gradient_filter;
-      ROS_INFO("Handling parameter GRAD FILTER");
       ROS_INFO("Handling parameter \"%s\" : %s", parameter.c_str(),  (value ? "true" : "false"));
       this->gradient_filter = value;
     }
     else if (parameter == GRADIENT_KERNEL && config.gradient_kernel != this->oldConfig_.gradient_kernel)
     {
       int value = config.gradient_kernel;
-      ROS_INFO("Handling parameter GRAD KERNEL");
       ROS_INFO("Handling parameter \"%s\" : %d", parameter.c_str(), int(value / 2) * 2 + 1);
       this->gradient_kernel = int(value / 2) * 2 + 1;;
     }
     else if (parameter == GRADIENT_THRESHOLD && config.gradient_threshold != this->oldConfig_.gradient_threshold)
     {
       int value = config.gradient_threshold;
-      ROS_INFO("Handling parameter GRAD THRESHOLD");
       ROS_INFO("Handling parameter \"%s\" : %d", parameter.c_str(), value);
       this->gradient_threshold = value;
     }
