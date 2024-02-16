@@ -80,15 +80,12 @@ ToFSensor::ToFSensor(ros::NodeHandle nh)
   sensor_temperature_bl = this->n_.advertise<sensor_msgs::Temperature>("sensor_temperature_bl", pub_queue);
   sensor_temperature_br = this->n_.advertise<sensor_msgs::Temperature>("sensor_temperature_br", pub_queue);
 
-  ROS_INFO("DELME: CREATING TOFCORE::SENSOR");
   interface_.reset(new tofcore::Sensor("/dev/ttyACM0"));
   interface_->stopStream();
-  ROS_INFO("DELME: FINISHED CREATING TOFCORE::SENSOR");
   dynamic_reconfigure::Server<tofcore_ros1::tofcoreConfig>::CallbackType f_ = boost::bind(&ToFSensor::on_set_parameters_callback, this, boost::placeholders::_1, boost::placeholders::_2);
   dynamic_reconfigure::Server<tofcore_ros1::tofcoreConfig> *server_ = new dynamic_reconfigure::Server<tofcore_ros1::tofcoreConfig>(this->config_mutex, this->n_);
   server_->setCallback(f_);
 
-  ROS_INFO("DELME: QUERYING LENS INFO");
   interface_->getLensInfo(rays_x, rays_y, rays_z);
   cartesianTransform_.initLensTransform(m_width, HEIGHT, rays_x, rays_y, rays_z);
 
@@ -97,17 +94,14 @@ ToFSensor::ToFSensor(ros::NodeHandle nh)
   server_->getConfigDefault(config);
 
   // Get sensor info
-  ROS_INFO("DELME: QUERYING SENSOR INFO");
   TofComm::versionData_t versionData{};
   interface_->getSensorInfo(versionData);
 
-  ROS_INFO("DELME: FORMATTING SENSOR INFO");
   config.api_version = versionData.m_softwareSourceID;
   config.chip_id = std::to_string(versionData.m_sensorChipId);
   config.model_name = versionData.m_modelName;
   config.sw_version = versionData.m_softwareVersion;
 
-  ROS_INFO("DELME: QUERYING SENSOR NAME/LOCATION/INT TIME");
   // Reading optional values from sensor
   std::optional<std::string> init_name = interface_->getSensorName();
   std::optional<std::string> init_location = interface_->getSensorLocation();
@@ -135,7 +129,6 @@ ToFSensor::ToFSensor(ros::NodeHandle nh)
     config.integration_time = 500;
 
   server_->updateConfig(config);
-  ROS_INFO("DELME: SUBSCRIBING TO MEASUREMENT");
   // Setup parameter server call back
   (void)interface_->subscribeMeasurement([&](std::shared_ptr<tofcore::Measurement_T> f) -> void
                                          { updateFrame(*f); });
