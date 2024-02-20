@@ -21,7 +21,6 @@
 #include <sensor_msgs/image_encodings.hpp>
 
 #include <tofcore_msgs/msg/integration_time.hpp>
-#include <tofcore_discovery/srv/discovery_request.hpp>
 
 /// ToFSensor ROS2 node class for interacting with a PreAct ToF sensor/camera
 class ToFSensor : public rclcpp::Node

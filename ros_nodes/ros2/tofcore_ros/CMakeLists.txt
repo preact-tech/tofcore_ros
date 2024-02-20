@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.8)
-project(truesense)
+project(tof_sensor)
 
 if(CMAKE_COMPILER_IS_GNUCXX OR CMAKE_CXX_COMPILER_ID MATCHES "Clang")
   add_compile_options(-Wall -Wextra -Wpedantic)
@@ -14,7 +14,6 @@ find_package(rclcpp REQUIRED)
 find_package(std_msgs REQUIRED)
 find_package(sensor_msgs REQUIRED)
 find_package(tofcore_msgs REQUIRED)
-find_package(tofcore_discovery REQUIRED)
 find_package(rosidl_typesupport_c REQUIRED)
 find_package(rosidl_typesupport_cpp REQUIRED)
 find_package(rosidl_default_generators REQUIRED)
@@ -40,24 +39,12 @@ target_include_directories(tof_sensor PUBLIC
   $<INSTALL_INTERFACE:include>
   )
 target_compile_features(tof_sensor PUBLIC c_std_99 cxx_std_17)  # Require C99 and C++17
-ament_target_dependencies(tof_sensor rclcpp std_msgs sensor_msgs tofcore_msgs tofcore_discovery)
+ament_target_dependencies(tof_sensor rclcpp std_msgs sensor_msgs tofcore_msgs )
 target_link_libraries(tof_sensor tofcore)
 
-##Discovery tof_server
-
-add_executable(tof_server src/discovery.cpp src/server_main.cpp)
-ament_target_dependencies(tof_server rclcpp)
-
-target_include_directories(tof_server PUBLIC
-  $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
-  $<INSTALL_INTERFACE:include>
-  )
-target_compile_features(tof_server PUBLIC c_std_99 cxx_std_17)  # Require C99 and C++17
-ament_target_dependencies(tof_server rclcpp std_msgs sensor_msgs tofcore_msgs tofcore_discovery)
-target_link_libraries(tof_server tofcore)
 
 
-install(TARGETS tof_sensor tof_server
+install(TARGETS tof_sensor 
   DESTINATION lib/${PROJECT_NAME})
 
 install(DIRECTORY launch rviz2 config

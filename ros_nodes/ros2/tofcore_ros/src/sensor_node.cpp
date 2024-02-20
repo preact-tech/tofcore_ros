@@ -39,7 +39,7 @@ bool begins_with(const std::string &needle, const std::string &haystack)
 }
 
 ToFSensor::ToFSensor()
-    : Node("tof_sensor", "truesense")
+    : Node("tof_sensor", "tof_sensor")
 {
   rclcpp::QoS pub_qos(10);
   pub_qos.reliability(rclcpp::ReliabilityPolicy::Reliable);
@@ -48,63 +48,8 @@ ToFSensor::ToFSensor()
   rcl_interfaces::msg::ParameterDescriptor readonly_descriptor;
   readonly_descriptor.read_only = true;
 
-  // Device discovery stuff
-  rclcpp::Client<tofcore_discovery::srv::DiscoveryRequest>::SharedPtr client =
-      this->create_client<tofcore_discovery::srv::DiscoveryRequest>("discovery_request");
-
-  while (!client->wait_for_service(2s))
-  {
-    if (!rclcpp::ok())
-    {
-      RCLCPP_FATAL(rclcpp::get_logger("rclcpp"), "Interrupted while waiting for the service. Exiting.");
-      break;
-    }
-    RCLCPP_INFO(rclcpp::get_logger("rclcpp"), "service not available, waiting again...");
-  }
-
-  this->declare_parameter(DESIRED_LOCATION, "-1");
-  this->declare_parameter(SENSOR_URI, "-1");
-  rclcpp::Parameter loc_to_find;
-  (void)this->get_parameter(DESIRED_LOCATION, loc_to_find);
-  rclcpp::Parameter uri_to_find;
-  (void)this->get_parameter(SENSOR_URI, uri_to_find);
-  if (uri_to_find.as_string() != "-1") // TODO: Find smarter way to do this check. We can decalre parameter without value and will get "not set" when querying, not sure how to leverage this?
-  {
-    interface_.reset(new tofcore::Sensor(1, uri_to_find.as_string()));
-    RCLCPP_INFO(this->get_logger(), "Sensor URI Provided, using device connection uri: \"%s\"", uri_to_find.as_string().c_str());
-    // rclcpp::Parameter str_param(SENSOR_URI, uri_to_find);
-    this->set_parameter(uri_to_find);
-  }
-  else if (loc_to_find.as_string() != "-1") // TODO: Find smarter way to do this check. We can decalre parameter without value and will get "not set" when querying, not sure how to leverage this?
-  {
-    auto request = std::make_shared<tofcore_discovery::srv::DiscoveryRequest::Request>();
-    request->location = loc_to_find.as_string();
-    auto result = client->async_send_request(request);
-    if (rclcpp::spin_until_future_complete(this->get_node_base_interface(), result) !=
-        rclcpp::FutureReturnCode::SUCCESS)
-    {
-      RCLCPP_FATAL(rclcpp::get_logger("rclcpp"), "Failed to call discovery service");
-    }
-    std::string found_sensor_uri = result.get()->uri;
-    if (!found_sensor_uri.empty())
-    {
-      interface_.reset(new tofcore::Sensor(1, found_sensor_uri));
-      RCLCPP_INFO(this->get_logger(), "Using device located at \"%s\" connection uri: \"%s\"", loc_to_find.as_string().c_str(), found_sensor_uri.c_str());
-      rclcpp::Parameter str_param(SENSOR_URI, found_sensor_uri);
-      this->set_parameter(str_param);
-    }
-    else
-    {
-      RCLCPP_FATAL(this->get_logger(), "No device located at \"%s\" ", loc_to_find.as_string().c_str());
-    }
-  }
-  else
-  {
-    interface_.reset(new tofcore::Sensor(1, "/dev/ttyACM0"));
-    RCLCPP_INFO(this->get_logger(), "No location provided, using default device connection uri: \"%s\"", "/dev/ttyACM0");
-    rclcpp::Parameter str_param(SENSOR_URI, "/dev/ttyACM0");
-    this->set_parameter(str_param);
-  }
+  interface_.reset(new tofcore::Sensor("/dev/ttyACM0"));
+  interface_->stopStream();
 
   // Get sensor info
   TofComm::versionData_t versionData{};
@@ -112,9 +57,15 @@ ToFSensor::ToFSensor()
 
   // use generic lens transform always
   std::vector<double> rays_x, rays_y, rays_z;
-  interface_->getLensInfo(rays_x, rays_y, rays_z);
-  cartesianTransform_.initLensTransform(m_width, HEIGHT, rays_x, rays_y, rays_z);
-
+  try
+  {
+    interface_->getLensInfo(rays_x, rays_y, rays_z);
+    cartesianTransform_.initLensTransform(m_width, HEIGHT, rays_x, rays_y, rays_z);
+  }
+  catch(...)
+  {
+    RCLCPP_FATAL(this->get_logger(), "Error reading lens info from sensor.");
+  }
   // Read Only params
   this->declare_parameter(API_VERSION, versionData.m_softwareSourceID, readonly_descriptor); // TODO: Update this when API version is availible
   this->declare_parameter(CHIP_ID, std::to_string(versionData.m_sensorChipId), readonly_descriptor);
@@ -134,7 +85,7 @@ ToFSensor::ToFSensor()
   // Reading optional values from sensor
   std::optional<std::string> init_name = interface_->getSensorName();
   std::optional<std::string> init_location = interface_->getSensorLocation();
-  std::optional<std::vector<short unsigned int>> init_integration = interface_->getIntegrationTimes();
+  std::optional<short unsigned int> init_integration = interface_->getIntegrationTime();
 
   if (init_name)
     this->declare_parameter(SENSOR_NAME, *init_name);
@@ -153,7 +104,7 @@ ToFSensor::ToFSensor()
   }
 
   if (init_integration)
-    this->declare_parameter(INTEGRATION_TIME, (*init_integration).at(0));
+    this->declare_parameter(INTEGRATION_TIME, *init_integration);
   else
     this->declare_parameter(INTEGRATION_TIME, 500);
 
@@ -164,10 +115,10 @@ ToFSensor::ToFSensor()
 
   // Setup topic pulbishers
   pub_ambient_ = this->create_publisher<sensor_msgs::msg::Image>("ambient", pub_qos);
-  pub_distance_ = this->create_publisher<sensor_msgs::msg::Image>("depth", pub_qos); // renamed this from distance to depth to match truesense node
+  pub_distance_ = this->create_publisher<sensor_msgs::msg::Image>("depth", pub_qos); // renamed this from distance to depth to match tof_sensor node
   pub_amplitude_ = this->create_publisher<sensor_msgs::msg::Image>("amplitude", pub_qos);
-  pub_pcd_ = this->create_publisher<sensor_msgs::msg::PointCloud2>("points_" + this->sensor_location_, pub_qos);
-  pub_integration_ = this->create_publisher<tofcore_msgs::msg::IntegrationTime>("frame_raw_" + this->sensor_location_, pub_qos);
+  pub_pcd_ = this->create_publisher<sensor_msgs::msg::PointCloud2>("points", pub_qos);
+  pub_integration_ = this->create_publisher<tofcore_msgs::msg::IntegrationTime>("frame_raw", pub_qos);
 
   for (size_t i = 0; i != pub_dcs_.size(); i++)
   {
@@ -300,31 +251,37 @@ void ToFSensor::apply_hdr_mode_param(const rclcpp::Parameter &parameter, rcl_int
 {
   auto value = parameter.as_string();
   RCLCPP_INFO(this->get_logger(), "Handling parameter \"%s\" : %s", parameter.get_name().c_str(), value.c_str());
-  if (begins_with("s", value)) // spacital
-  {
-    interface_->setHDRMode(1);
-  }
-  else if (begins_with("t", value)) // temporal
-  {
-    interface_->setHDRMode(2);
-  }
-  else if (begins_with("o", value)) // off
-  {
-    interface_->setHDRMode(0);
-  }
-  else
-  {
-    result.successful = false;
-    result.reason = parameter.get_name() + " value is out of range";
-  }
+  RCLCPP_INFO(this->get_logger(), "HDR not yet supported in ROS2");
+
+  result.successful = false;
+  result.reason = "Not supported";
+
+  // if (begins_with("s", value)) // spacital
+  // {
+  //   interface_->setHDRMode(1);
+  // }
+  // else if (begins_with("t", value)) // temporal
+  // {
+  //   interface_->setHDRMode(2);
+  // }
+  // else if (begins_with("o", value)) // off
+  // {
+  //   interface_->setHDRMode(0);
+  // }
+  // else
+  // {
+  //   result.successful = false;
+  //   result.reason = parameter.get_name() + " value is out of range";
+  // }
 }
 
 void ToFSensor::apply_modulation_frequency_param(const rclcpp::Parameter &parameter, rcl_interfaces::msg::SetParametersResult &result)
 {
   auto value = parameter.as_int();
-  RCLCPP_INFO(this->get_logger(), "Handling parameter \"%s\" : %d", parameter.get_name().c_str(), value);
+  RCLCPP_INFO(this->get_logger(), "Handling parameter \"%s\" : %ld", parameter.get_name().c_str(), value);
 
   interface_->setModulation(value);
+  result.successful = true;
 }
 
 void ToFSensor::apply_streaming_param(const rclcpp::Parameter &parameter, rcl_interfaces::msg::SetParametersResult &result)
@@ -556,10 +513,10 @@ void ToFSensor::publish_pointCloud(const tofcore::Measurement_T &frame, rclcpp::
   integration_msg.header.frame_id = this->sensor_location_;
   // Adding this to the message for the auto exposure node
   // Need to check if it exists because this is optional value
-  if (frame.integration_times())
+  if (frame.integration_time())
   {
-    auto integration_times = *std::move(frame.integration_times());
-    integration_msg.integration_time = integration_times.at(0);
+    auto integration_times = *std::move(frame.integration_time());
+    integration_msg.integration_time = integration_times;
   }
 
   sensor_msgs::PointCloud2Modifier modifier(cloud_msg);

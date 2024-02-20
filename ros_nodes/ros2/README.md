@@ -28,5 +28,5 @@ One can quickly view a pointcloud generated from distance data generated on the 
 ```
 cd ros2
 source ./install/setup.bash
-ros2 launch truesense tofcore.launch.py
+ros2 launch tof_sensor tofcore.launch.py
 ```

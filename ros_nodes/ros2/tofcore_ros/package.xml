@@ -1,7 +1,7 @@
 <?xml version="1.0"?>
 <?xml-model href="http://download.ros.org/schema/package_format3.xsd" schematypens="http://www.w3.org/2001/XMLSchema"?>
 <package format="3">
-  <name>truesense</name>
+  <name>tof_sensor</name>
   <version>0.0.0</version>
   <description>Support for interfacing to PreAct TOF Sensors</description>
   <maintainer email="matt.schuckmann@preact-tech.com">mschuckmann</maintainer>
@@ -14,7 +14,6 @@
   <depend>std_msgs</depend>
   <depend>sensor_msgs</depend>
   <depend>tofcore_msgs</depend>
-  <depend>tofcore_discovery</depend>
 
   <build_depend>builtin_interfaces</build_depend>  
   <buildtool_depend>rosidl_default_generators</buildtool_depend>   
