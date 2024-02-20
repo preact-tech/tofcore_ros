@@ -1,7 +1,6 @@
 #include "sensor_node.hpp"
 #include <rclcpp/rclcpp.hpp>
 #include <memory>
-#include <discovery.hpp>
 
 int main(int argc, char ** argv)
 {

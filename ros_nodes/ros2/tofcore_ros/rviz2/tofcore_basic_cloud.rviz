@@ -76,7 +76,7 @@ Visualization Manager:
         Durability Policy: Volatile
         History Policy: Keep Last
         Reliability Policy: Reliable
-        Value: /truesense/points_Unknown
+        Value: /tof_sensor/points
       Use Fixed Frame: true
       Use rainbow: true
       Value: true
@@ -92,7 +92,7 @@ Visualization Manager:
         Durability Policy: Volatile
         History Policy: Keep Last
         Reliability Policy: Best Effort
-        Value: /truesense/amplitude
+        Value: /tof_sensor/amplitude
       Value: true
     - Class: rviz_default_plugins/Image
       Enabled: true
@@ -106,7 +106,7 @@ Visualization Manager:
         Durability Policy: Volatile
         History Policy: Keep Last
         Reliability Policy: Best Effort
-        Value: /truesense/distance
+        Value: /tof_sensor/distance
       Value: true
     - Class: rviz_default_plugins/Image
       Enabled: true
@@ -120,7 +120,7 @@ Visualization Manager:
         Durability Policy: Volatile
         History Policy: Keep Last
         Reliability Policy: Best Effort
-        Value: /truesense/ambient
+        Value: /tof_sensor/ambient
       Value: true
   Enabled: true
   Global Options:

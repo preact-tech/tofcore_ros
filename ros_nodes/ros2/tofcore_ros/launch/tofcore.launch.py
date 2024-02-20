@@ -18,31 +18,17 @@ def launch_setup(context, *args, **kwargs):
         all_params = yaml.safe_load(fid)
      
 
-    ts_discovery = Node(
-        package="truesense",
-        executable='tof_server',
-        name='tof_discovery_server',
-        output='screen',
-        on_exit=Shutdown()
-    )      
-    tof_params_rear = all_params["/truesense/tof_sensor_rear"]["ros__parameters"]
-    ts_camera_rear = Node(
-        package="truesense",
+     
+    tof_params = all_params["/tof_sensor"]["ros__parameters"]
+    ts_camera = Node(
+        package="tof_sensor",
         executable='tof_sensor',
-        name='tof_sensor_rear',
+        name='tof_sensor',
         output='screen',
-        parameters=[tof_params_rear],
+        parameters=[tof_params],
         on_exit=Shutdown()
     )
-    tof_params_left = all_params["/truesense/tof_sensor_left"]["ros__parameters"]
-    ts_camera_left = Node(
-        package="truesense",
-        executable='tof_sensor',
-        name='tof_sensor_left',
-        output='screen',
-        parameters=[tof_params_left],
-        on_exit=Shutdown()
-    )
+
     rviz = Node(
         package='rviz2',
         executable='rviz2',
@@ -62,7 +48,7 @@ def launch_setup(context, *args, **kwargs):
     )
     
 
-    retval = [ ts_discovery, ts_camera_rear,   rviz, rqt_node]
+    retval = [  ts_camera,   rviz, rqt_node]
 
     if LaunchConfiguration('with_ros1_bridge').perform(context).lower() == 'true':
         retval.append( Node(
@@ -90,7 +76,7 @@ def launch_setup(context, *args, **kwargs):
     return retval
 
 def generate_launch_description():
-    pkg_share = FindPackageShare(package='truesense').find('truesense')
+    pkg_share = FindPackageShare(package='tof_sensor').find('tof_sensor')
     default_rviz_config_path = os.path.join(pkg_share, 'rviz2/tofcore_basic_cloud.rviz')
     defaul_config_path = os.path.join(pkg_share, 'config/config.yaml')
 
