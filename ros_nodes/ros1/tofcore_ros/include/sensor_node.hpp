@@ -27,7 +27,7 @@
 
 #include <opencv2/core.hpp>
 #include <opencv2/imgproc.hpp>
-#include<opencv2/opencv.hpp>
+#include <opencv2/opencv.hpp>
 
 /// ToFSensor ROS1 node class for interacting with a PreAct ToF sensor/camera
 class ToFSensor // : public ros::Node
@@ -49,29 +49,50 @@ private:
   ros::NodeHandle n_;
   std::string sensor_location_;
   boost::recursive_mutex config_mutex;
-  //dynamic_reconfigure::Server<tofcore_ros1::tofcoreConfig> server_;
-  //dynamic_reconfigure::Server<tofcore_ros1::tofcoreConfig>::CallbackType f_;
+  // dynamic_reconfigure::Server<tofcore_ros1::tofcoreConfig> server_;
+  // dynamic_reconfigure::Server<tofcore_ros1::tofcoreConfig>::CallbackType f_;
   tofcore_ros1::tofcoreConfig oldConfig_;
   // Filter parameters
   bool median_filter;
-  int median_kernel=3;
+  int median_kernel = 3;
   bool bilateral_filter;
-  int bilateral_kernel =5;
-  int bilateral_color=75;
-  int bilateral_space=75;
+  int bilateral_kernel = 5;
+  int bilateral_color = 75;
+  int bilateral_space = 75;
   int maximum_amplitude = 2000;
   bool gradient_filter = true;
   int gradient_kernel = 1;
   int gradient_threshold = 1000;
   bool temporal_filter;
   int temporal_alpha;
-  int min_amplitude=0;
+  int min_amplitude = 0;
+  // HDR Parameters
   bool hdr_enable;
   std::string hdr_integrations;
   long unsigned int hdr_count;
-  std::vector<std::tuple<cv::Mat,cv::Mat>> hdr_frames;
-  int saturation_thresh=2000;
+  std::vector<std::tuple<cv::Mat, cv::Mat>> hdr_frames;
+  int saturation_thresh = 2000;
   std::mutex m;
+  // Auto-Exposure Parameters
+  int ae_target_mean_amp = 200;
+  float ae_target_exp_avg_alpha = 0.1;
+  float ae_rc_speed_factor = 0.2;
+  float ae_rc_speed_factor_fast = 0.9;
+  float ae_rc_rel_error_thresh = 0.1;
+  float ae_rc_min_amp = 50.0;
+  bool ae_rc_apply_min_reflect_thresh = true;
+
+  float ae_min_integration_time_us = 10;
+  float ae_max_integration_time_us = 1750;
+  int ae_roi_top_px = 0;
+  int ae_roi_bottom_px = 80;
+  int ae_roi_left_px = 80;
+  int ae_roi_right_px = 80;
+
+  //== = measure
+  float amp_measure_max = 0.0;
+  float amp_measure_mean = 0.0;
+  float error_measure = 0.0;
 
 public:
   /// Standard constructor
@@ -97,7 +118,7 @@ private:
   /// Publish a PointCloud using distance data in frame to the topic publisher pub with timestamp stamp.
   void publish_pointCloud(const tofcore::Measurement_T &frame, ros::Publisher &pub, ros::Publisher &cust_pub, const ros::Time &stamp);
   /// Publish a PointCloud using distance data in frame to the topic publisher pub with timestamp stamp.
-  void publish_pointCloudHDR( const tofcore::Measurement_T &frame,ros::Publisher &pub, ros::Publisher &cust_pub,  ros::Publisher &pub_amp, ros::Publisher &pub_dist,const ros::Time &stamp);
+  void publish_pointCloudHDR(const tofcore::Measurement_T &frame, ros::Publisher &pub, ros::Publisher &cust_pub, ros::Publisher &pub_amp, ros::Publisher &pub_dist, const ros::Time &stamp);
 
   /// Publish a dcs data in frame to the four dcs topic publishers with timestamp stamp.
   void publish_DCSData(const tofcore::Measurement_T &frame, const ros::Time &stamp);
@@ -118,6 +139,13 @@ private:
   void apply_sensor_name_param(const std::string &parameter, tofcore_ros1::tofcoreConfig &config);
   void apply_sensor_location_param(const std::string &parameter, tofcore_ros1::tofcoreConfig &config);
   void apply_vsm_param(const std::string &parameter, tofcore_ros1::tofcoreConfig &config);
+
+  // Auto-Exposure Functions
+  int process_ae(int integration_time_us, cv::Mat ampimg, float timestep );
+  float measure_from_avg(cv::Mat ampimg, int int_us);
+  float obtain_error(float amp_measure_max, float amp_measure_mean, int int_us);
+  int control_recursive(int integration_time_us , float amp_measure_mean);
+  float measured_error();
 };
 
 #endif

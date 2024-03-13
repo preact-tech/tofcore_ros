@@ -237,14 +237,15 @@ void ToFSensor::on_set_parameters_callback(tofcore_ros1::tofcoreConfig &config, 
     else if (parameter == GRADIENT_FILTER && config.gradient_filter != this->oldConfig_.gradient_filter)
     {
       bool value = config.gradient_filter;
-      ROS_INFO("Handling parameter \"%s\" : %s", parameter.c_str(),  (value ? "true" : "false"));
+      ROS_INFO("Handling parameter \"%s\" : %s", parameter.c_str(), (value ? "true" : "false"));
       this->gradient_filter = value;
     }
     else if (parameter == GRADIENT_KERNEL && config.gradient_kernel != this->oldConfig_.gradient_kernel)
     {
       int value = config.gradient_kernel;
       ROS_INFO("Handling parameter \"%s\" : %d", parameter.c_str(), int(value / 2) * 2 + 1);
-      this->gradient_kernel = int(value / 2) * 2 + 1;;
+      this->gradient_kernel = int(value / 2) * 2 + 1;
+      ;
     }
     else if (parameter == GRADIENT_THRESHOLD && config.gradient_threshold != this->oldConfig_.gradient_threshold)
     {
@@ -617,7 +618,7 @@ void ToFSensor::publish_pointCloud(const tofcore::Measurement_T &frame, ros::Pub
     cv::Mat grad_mask = gradient_magnitude > this->gradient_threshold;
     dist_frame.setTo(cv::Scalar(0), grad_mask);
   }
-  
+
   sensor_msgs::PointCloud2Modifier modifier(cloud_msg.point_cloud);
   modifier.resize(frame.height() * frame.width());
   modifier.setPointCloud2Fields(
@@ -1007,4 +1008,97 @@ void ToFSensor::updateFrame(const tofcore::Measurement_T &frame)
     break;
   }
   }
+}
+int ToFSensor::process_ae(int integration_time_us, cv::Mat ampimg, float timestep = .01)
+{
+  // === calculate new integration time
+
+  //   else:  // this->feedback_type == SaturationFeedbackType.Recursive:
+
+  // calculate mean amplitude
+  float amp_measure_mean = measure_from_avg(ampimg, integration_time_us);
+  return control_recursive(integration_time_us, amp_measure_mean);
+}
+
+float ToFSensor::measure_from_avg(cv::Mat ampimg, int int_us)
+{
+  // amp_list = this->parse_5zones(ampimg);
+
+  if (this->ae_rc_apply_min_reflect_thresh)
+  {
+    // apply min reflectifivity thresholding to amplitude image
+    // intent is to ignore pixels that are so dark even at max integration time we wouldn't use them;
+
+    // compute the minimum amplitude assuming the maximum integration time is used
+    float min_amp = this->ae_rc_min_amp * int_us / this->ae_max_integration_time_us;
+    //   filtered_amp_list = [];
+    //         for
+    //           amp in amp_list
+    //           {
+    //             pixel_mask = amp >= min_amp;
+    //             filtered_amp_list.append(amp[pixel_mask]);
+    //           }
+    //         amp_list = filtered_amp_list;
+  }
+
+  // === calculate mean amplitude
+        // amp_zones = np.array([a.mean() if a.size > 0 else 0 for a in amp_list]);
+
+        // idx_nonzero = (amp_zones > 0);
+        cv::Rect roi(this->ae_roi_left_px, this->ae_roi_top_px, ampimg.cols-this->ae_roi_left_px-this->ae_roi_right_px, ampimg.rows-this->ae_roi_top_px-this->ae_roi_bottom_px);//x,y,width,height
+
+        float weight_sum = cv::sum(ampimg(roi)) //this->zone_weights[idx_nonzero].sum();
+        if (weight_sum == 0)
+        {
+          return 0;
+        }
+        else
+        {
+          normalized_wts = this->zone_weights / weight_sum;
+          amp_measure = amp_zones.dot(normalized_wts);
+        }
+
+        alpha = this->ae_target_exp_avg_alpha;
+        this->amp_measure_mean = alpha * this->amp_measure_mean + (1 - alpha) * amp_measure;
+
+        return this->amp_measure_mean;
+}
+float ToFSensor::obtain_error(float amp_measure_max, float amp_measure_mean, int int_us)
+{
+
+  error = this->ae_target_mean_amp - this->amp_measure_mean;
+
+  return error;
+}
+
+int ToFSensor::control_recursive(int integration_time_us, float amp_measure_mean)
+{
+
+  // === determine error
+  error = obtain_error(amp_measure_max, amp_measure_mean, integration_time_us);
+
+  rel_error = error / max(amp_measure_mean, 1e-10);
+
+  if (abs(rel_error) > this->ae_rc_rel_error_thresh)
+  {
+    k = this->ae_rc_speed_factor_fast;
+  }
+  else
+  {
+    k = this->ae_rc_speed_factor;
+  }
+
+  // === update
+  new_integration_time = integration_time_us * (1 + k * rel_error);
+
+  // === bound the integration time
+  itmin = this->ae_min_integration_time_us;
+  itmax = this->ae_max_integration_time_us;
+  new_integration_time = max(itmin, min(itmax, new_integration_time));
+  return int(new_integration_time);
+}
+
+float ToFSensor::measured_error()
+{
+  return this->error_measure;
 }
