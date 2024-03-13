@@ -83,7 +83,7 @@ ToFSensor::ToFSensor(ros::NodeHandle nh)
   interface_.reset(new tofcore::Sensor("/dev/ttyACM0"));
   interface_->stopStream();
   dynamic_reconfigure::Server<tofcore_ros1::tofcoreConfig>::CallbackType f_ = boost::bind(&ToFSensor::on_set_parameters_callback, this, boost::placeholders::_1, boost::placeholders::_2);
-  dynamic_reconfigure::Server<tofcore_ros1::tofcoreConfig> *server_ = new dynamic_reconfigure::Server<tofcore_ros1::tofcoreConfig>(this->config_mutex, this->n_);
+   server_ = new dynamic_reconfigure::Server<tofcore_ros1::tofcoreConfig>(this->config_mutex, this->n_);
   server_->setCallback(f_);
 
   interface_->getLensInfo(rays_x, rays_y, rays_z);
@@ -590,7 +590,11 @@ void ToFSensor::publish_pointCloud(const tofcore::Measurement_T &frame, ros::Pub
   }
 
   cv::Mat dist_frame = cv::Mat(frame.height(), frame.width(), CV_16UC1, (void *)frame.distance().begin());
-
+  if (this->ae_enable)
+  {
+    cv::Mat amp_frame = cv::Mat(frame.height(), frame.width(), CV_16UC1, (void *)frame.amplitude().begin());
+    process_ae(*std::move(frame.integration_time()), amp_frame, 0.01);
+  }
   if (this->median_filter)
   {
     cv::medianBlur(dist_frame, dist_frame, this->median_kernel);
@@ -1009,7 +1013,7 @@ void ToFSensor::updateFrame(const tofcore::Measurement_T &frame)
   }
   }
 }
-int ToFSensor::process_ae(int integration_time_us, cv::Mat ampimg, float timestep = .01)
+void ToFSensor::process_ae(short unsigned int integration_time_us, cv::Mat& ampimg, float timestep = .01)
 {
   // === calculate new integration time
 
@@ -1017,7 +1021,11 @@ int ToFSensor::process_ae(int integration_time_us, cv::Mat ampimg, float timeste
 
   // calculate mean amplitude
   float amp_measure_mean = measure_from_avg(ampimg, integration_time_us);
-  return control_recursive(integration_time_us, amp_measure_mean);
+  int new_integration = control_recursive(integration_time_us, amp_measure_mean);
+  tofcore_ros1::tofcoreConfig config;
+  server_->getConfigDefault(config);
+  config.integration_time = new_integration;
+  server_->updateConfig(config);
 }
 
 float ToFSensor::measure_from_avg(cv::Mat ampimg, int int_us)
@@ -1042,31 +1050,26 @@ float ToFSensor::measure_from_avg(cv::Mat ampimg, int int_us)
   }
 
   // === calculate mean amplitude
-        // amp_zones = np.array([a.mean() if a.size > 0 else 0 for a in amp_list]);
+  // amp_zones = np.array([a.mean() if a.size > 0 else 0 for a in amp_list]);
 
-        // idx_nonzero = (amp_zones > 0);
-        cv::Rect roi(this->ae_roi_left_px, this->ae_roi_top_px, ampimg.cols-this->ae_roi_left_px-this->ae_roi_right_px, ampimg.rows-this->ae_roi_top_px-this->ae_roi_bottom_px);//x,y,width,height
+  // idx_nonzero = (amp_zones > 0);
+  cv::Rect roi(this->ae_roi_left_px, this->ae_roi_top_px, ampimg.cols - this->ae_roi_left_px - this->ae_roi_right_px, ampimg.rows - this->ae_roi_top_px - this->ae_roi_bottom_px); // x,y,width,height
 
-        float weight_sum = cv::sum(ampimg(roi)) //this->zone_weights[idx_nonzero].sum();
-        if (weight_sum == 0)
-        {
-          return 0;
-        }
-        else
-        {
-          normalized_wts = this->zone_weights / weight_sum;
-          amp_measure = amp_zones.dot(normalized_wts);
-        }
+  double amp_measure = cv::mean(ampimg(roi))[0]; // this->zone_weights[idx_nonzero].sum();
+  if (amp_measure == 0)
+  {
+    return 0;
+  }
 
-        alpha = this->ae_target_exp_avg_alpha;
-        this->amp_measure_mean = alpha * this->amp_measure_mean + (1 - alpha) * amp_measure;
+  float alpha = this->ae_target_exp_avg_alpha;
+  this->amp_measure_mean = alpha * this->amp_measure_mean + (1 - alpha) * amp_measure;
 
-        return this->amp_measure_mean;
+  return this->amp_measure_mean;
 }
 float ToFSensor::obtain_error(float amp_measure_max, float amp_measure_mean, int int_us)
 {
 
-  error = this->ae_target_mean_amp - this->amp_measure_mean;
+  float error = this->ae_target_mean_amp - this->amp_measure_mean;
 
   return error;
 }
@@ -1075,10 +1078,10 @@ int ToFSensor::control_recursive(int integration_time_us, float amp_measure_mean
 {
 
   // === determine error
-  error = obtain_error(amp_measure_max, amp_measure_mean, integration_time_us);
+  float error = obtain_error(amp_measure_max, amp_measure_mean, integration_time_us);
 
-  rel_error = error / max(amp_measure_mean, 1e-10);
-
+  float rel_error = error / std::max((double)amp_measure_mean, 1e-10);
+  float k;
   if (abs(rel_error) > this->ae_rc_rel_error_thresh)
   {
     k = this->ae_rc_speed_factor_fast;
@@ -1089,12 +1092,12 @@ int ToFSensor::control_recursive(int integration_time_us, float amp_measure_mean
   }
 
   // === update
-  new_integration_time = integration_time_us * (1 + k * rel_error);
+  int new_integration_time = integration_time_us * (1 + k * rel_error);
 
   // === bound the integration time
-  itmin = this->ae_min_integration_time_us;
-  itmax = this->ae_max_integration_time_us;
-  new_integration_time = max(itmin, min(itmax, new_integration_time));
+  int itmin = this->ae_min_integration_time_us;
+  int itmax = this->ae_max_integration_time_us;
+  new_integration_time = std::max(itmin, std::min(itmax, new_integration_time));
   return int(new_integration_time);
 }
 

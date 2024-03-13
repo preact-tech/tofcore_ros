@@ -52,6 +52,7 @@ private:
   // dynamic_reconfigure::Server<tofcore_ros1::tofcoreConfig> server_;
   // dynamic_reconfigure::Server<tofcore_ros1::tofcoreConfig>::CallbackType f_;
   tofcore_ros1::tofcoreConfig oldConfig_;
+  dynamic_reconfigure::Server<tofcore_ros1::tofcoreConfig> *server_;
   // Filter parameters
   bool median_filter;
   int median_kernel = 3;
@@ -74,7 +75,8 @@ private:
   int saturation_thresh = 2000;
   std::mutex m;
   // Auto-Exposure Parameters
-  int ae_target_mean_amp = 200;
+  bool ae_enable = true;
+  int ae_target_mean_amp = 800;
   float ae_target_exp_avg_alpha = 0.1;
   float ae_rc_speed_factor = 0.2;
   float ae_rc_speed_factor_fast = 0.9;
@@ -83,11 +85,11 @@ private:
   bool ae_rc_apply_min_reflect_thresh = true;
 
   float ae_min_integration_time_us = 10;
-  float ae_max_integration_time_us = 1750;
+  float ae_max_integration_time_us = 4000;
   int ae_roi_top_px = 0;
-  int ae_roi_bottom_px = 80;
-  int ae_roi_left_px = 80;
-  int ae_roi_right_px = 80;
+  int ae_roi_bottom_px = 0;
+  int ae_roi_left_px = 0;
+  int ae_roi_right_px = 0;
 
   //== = measure
   float amp_measure_max = 0.0;
@@ -141,7 +143,7 @@ private:
   void apply_vsm_param(const std::string &parameter, tofcore_ros1::tofcoreConfig &config);
 
   // Auto-Exposure Functions
-  int process_ae(int integration_time_us, cv::Mat ampimg, float timestep );
+  void process_ae(short unsigned int integration_time_us, cv::Mat& ampimg, float timestep );
   float measure_from_avg(cv::Mat ampimg, int int_us);
   float obtain_error(float amp_measure_max, float amp_measure_mean, int int_us);
   int control_recursive(int integration_time_us , float amp_measure_mean);
