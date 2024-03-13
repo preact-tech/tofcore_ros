@@ -83,7 +83,7 @@ ToFSensor::ToFSensor(ros::NodeHandle nh)
   interface_.reset(new tofcore::Sensor("/dev/ttyACM0"));
   interface_->stopStream();
   dynamic_reconfigure::Server<tofcore_ros1::tofcoreConfig>::CallbackType f_ = boost::bind(&ToFSensor::on_set_parameters_callback, this, boost::placeholders::_1, boost::placeholders::_2);
-   server_ = new dynamic_reconfigure::Server<tofcore_ros1::tofcoreConfig>(this->config_mutex, this->n_);
+  server_ = new dynamic_reconfigure::Server<tofcore_ros1::tofcoreConfig>(this->config_mutex, this->n_);
   server_->setCallback(f_);
 
   interface_->getLensInfo(rays_x, rays_y, rays_z);
@@ -129,6 +129,8 @@ ToFSensor::ToFSensor(ros::NodeHandle nh)
     config.integration_time = 500;
 
   server_->updateConfig(config);
+      on_set_parameters_callback(config, 0);
+
   // Setup parameter server call back
   (void)interface_->subscribeMeasurement([&](std::shared_ptr<tofcore::Measurement_T> f) -> void
                                          { updateFrame(*f); });
@@ -1013,7 +1015,7 @@ void ToFSensor::updateFrame(const tofcore::Measurement_T &frame)
   }
   }
 }
-void ToFSensor::process_ae(short unsigned int integration_time_us, cv::Mat& ampimg, float timestep = .01)
+void ToFSensor::process_ae(short unsigned int integration_time_us, cv::Mat &ampimg, float timestep = .01)
 {
   // === calculate new integration time
 
@@ -1022,10 +1024,15 @@ void ToFSensor::process_ae(short unsigned int integration_time_us, cv::Mat& ampi
   // calculate mean amplitude
   float amp_measure_mean = measure_from_avg(ampimg, integration_time_us);
   int new_integration = control_recursive(integration_time_us, amp_measure_mean);
-  tofcore_ros1::tofcoreConfig config;
-  server_->getConfigDefault(config);
-  config.integration_time = new_integration;
-  server_->updateConfig(config);
+
+  if (new_integration != integration_time_us)
+  {
+
+    this->oldConfig_.integration_time = new_integration;
+    on_set_parameters_callback(this->oldConfig_, 0);
+      server_->updateConfig(this->oldConfig_);
+
+  }
 }
 
 float ToFSensor::measure_from_avg(cv::Mat ampimg, int int_us)

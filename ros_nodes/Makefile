@@ -44,11 +44,11 @@ provision_ros1: provision ##	Install required tools, packages and git repos to b
 
 .PHONY: ros2
 ros2:
-	 PREACT_CPPCHECK_ENABLE="OFF" && cd ros2 && colcon build --packages-skip ros1_bridge preact_alg detection_py lens_calibration 
+	 export PREACT_CPPCHECK_ENABLE="OFF" && cd ros2 && colcon build --packages-skip ros1_bridge preact_alg detection_py lens_calibration 
 	 
 .PHONY: ros1
 ros1:
-	 PREACT_CPPCHECK_ENABLE="OFF" && cd ros1 &&  source /opt/ros/noetic/setup.bash && colcon build --parallel-workers 20
+	 export PREACT_CPPCHECK_ENABLE="OFF" && cd ros1 &&  source /opt/ros/noetic/setup.bash && colcon build
 
 .PHONY: bridge
 bridge: build ##	Build the ROS1 bridge, build environment must have both ROS1 and ROS2 installed

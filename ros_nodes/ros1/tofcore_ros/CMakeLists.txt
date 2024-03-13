@@ -191,6 +191,9 @@ target_link_libraries(tof_sensor
 install(TARGETS tof_sensor
   RUNTIME DESTINATION ${CATKIN_PACKAGE_BIN_DESTINATION}
 )
+install(DIRECTORY launch rviz config
+  DESTINATION share/${PROJECT_NAME}
+)
 
 ## Mark libraries for installation
 ## See http://docs.ros.org/melodic/api/catkin/html/howto/format1/building_libraries.html
