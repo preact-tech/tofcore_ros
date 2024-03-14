@@ -65,7 +65,7 @@ private:
   int maximum_amplitude = 2000;
   bool gradient_filter = true;
   int gradient_kernel = 1;
-  int gradient_threshold = 1000;
+  int gradient_threshold = 50;
   int gradient_filter_support = 6;
   bool temporal_filter;
   int temporal_alpha;
@@ -80,13 +80,13 @@ private:
   // Auto-Exposure Parameters
   std::thread ae_update_thread;
   BlockingQueue<int> ae_integrations;
-  bool ae_enable;
-  int ae_target_mean_amp = 800;
+  bool ae_enable = true;
+  int ae_target_mean_amp = 500;
   float ae_target_exp_avg_alpha = 0.1;
   float ae_rc_speed_factor = 0.2;
   float ae_rc_speed_factor_fast = 0.9;
   float ae_rc_rel_error_thresh = 0.1;
-  int ae_rc_min_amp = 50;
+  int ae_rc_min_amp = 100;
   bool ae_rc_apply_min_reflect_thresh = true;
 
   float ae_min_integration_time_us = 10;

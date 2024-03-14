@@ -408,35 +408,35 @@ void ToFSensor::on_set_parameters_callback(tofcore_ros1::tofcoreConfig &config, 
     else if (parameter == AE_MAX_INTEGRATION_TIME_US && config.ae_max_integration_time_us != this->oldConfig_.ae_max_integration_time_us)
     {
       int value = config.ae_max_integration_time_us;
-      ROS_INFO("Handling parameter \"%s\" : %s", parameter.c_str(), (value ? "true" : "false"));
+      ROS_INFO("Handling parameter \"%s\" : %d", parameter.c_str(), value);
       this->ae_max_integration_time_us = value;
       this->oldConfig_.ae_max_integration_time_us = config.ae_max_integration_time_us;
     }
     else if (parameter == AE_ROI_TOP_PX && config.ae_roi_top_px != this->oldConfig_.ae_roi_top_px)
     {
       int value = config.ae_roi_top_px;
-      ROS_INFO("Handling parameter \"%s\" : %s", parameter.c_str(), (value ? "true" : "false"));
+      ROS_INFO("Handling parameter \"%s\" : %d", parameter.c_str(), value);
       this->ae_roi_top_px = value;
       this->oldConfig_.ae_roi_top_px = config.ae_roi_top_px;
     }
     else if (parameter == AE_ROI_BOTTOM_PX && config.ae_roi_bottom_px != this->oldConfig_.ae_roi_bottom_px)
     {
       int value = config.ae_roi_bottom_px;
-      ROS_INFO("Handling parameter \"%s\" : %s", parameter.c_str(), (value ? "true" : "false"));
+      ROS_INFO("Handling parameter \"%s\" : %d", parameter.c_str(), value);
       this->ae_roi_bottom_px = value;
       this->oldConfig_.ae_roi_bottom_px = config.ae_roi_bottom_px;
     }
     else if (parameter == AE_ROI_LEFT_PX && config.ae_roi_left_px != this->oldConfig_.ae_roi_left_px)
     {
       int value = config.ae_roi_left_px;
-      ROS_INFO("Handling parameter \"%s\" : %s", parameter.c_str(), (value ? "true" : "false"));
+      ROS_INFO("Handling parameter \"%s\" : %d", parameter.c_str(), value);
       this->ae_roi_left_px = value;
       this->oldConfig_.ae_roi_left_px = config.ae_roi_left_px;
     }
     else if (parameter == AE_ROI_RIGHT_PX && config.ae_roi_right_px != this->oldConfig_.ae_roi_right_px)
     {
       int value = config.ae_roi_right_px;
-      ROS_INFO("Handling parameter \"%s\" : %s", parameter.c_str(), (value ? "true" : "false"));
+      ROS_INFO("Handling parameter \"%s\" : %d", parameter.c_str(), value);
       this->ae_roi_right_px = value;
       this->oldConfig_.ae_roi_right_px = config.ae_roi_right_px;
     }
@@ -787,13 +787,15 @@ void ToFSensor::publish_pointCloud(const tofcore::Measurement_T &frame, ros::Pub
     cv::Mat grad_x, grad_y;
     cv::Mat dst = cv::Mat::zeros(dist_frame.size(), CV_32FC1);
     dist_frame.convertTo(dst, CV_32FC1);
-    cv::Sobel(dst, grad_x, CV_64FC1, 1, 0, 2 * this->gradient_kernel + 1);
-    cv::Sobel(dst, grad_y, CV_64FC1, 0, 1, 2 * this->gradient_kernel + 1);
-    cv::Mat gradient_magnitude;
-    auto grad_x_mask = cv::abs(grad_x) > this->gradient_threshold;
-    auto grad_y_mask = cv::abs(grad_y) > this->gradient_threshold;
-    cv::Mat grad_mask;
-    cv::bitwise_or(grad_x_mask, grad_y_mask, grad_mask);
+
+    // Compute the Laplacian
+    cv::Mat laplacian;
+    cv::Laplacian(dist_frame, laplacian, CV_64F);
+
+    // Calculate the magnitude of the gradient
+    cv::Mat laplacian_abs;
+    cv::Mat grad_mask = cv::abs(laplacian) > this->gradient_threshold;
+
     cv::Mat mask_valid;
     cv::bitwise_not(grad_mask, mask_valid);
 
@@ -1218,6 +1220,9 @@ void ToFSensor::process_ae(short unsigned int integration_time_us, cv::Mat &ampi
 float ToFSensor::measure_from_avg(cv::Mat ampimg, int int_us)
 {
   // amp_list = this->parse_5zones(ampimg);
+  cv::Scalar amp_measure;
+  cv::Rect roi(this->ae_roi_left_px, this->ae_roi_top_px, ampimg.cols - this->ae_roi_left_px - this->ae_roi_right_px, ampimg.rows - this->ae_roi_top_px - this->ae_roi_bottom_px); // x,y,width,height
+  cv::Mat amp_roi = ampimg(roi);
 
   if (this->ae_rc_apply_min_reflect_thresh)
   {
@@ -1226,30 +1231,23 @@ float ToFSensor::measure_from_avg(cv::Mat ampimg, int int_us)
 
     // compute the minimum amplitude assuming the maximum integration time is used
     float min_amp = this->ae_rc_min_amp * int_us / this->ae_max_integration_time_us;
-    //   filtered_amp_list = [];
-    //         for
-    //           amp in amp_list
-    //           {
-    //             pixel_mask = amp >= min_amp;
-    //             filtered_amp_list.append(amp[pixel_mask]);
-    //           }
-    //         amp_list = filtered_amp_list;
+    
+    // find 'bright enough' pixels in the roi
+    amp_measure = cv::mean(amp_roi, amp_roi > min_amp);
+  }
+  else
+  {
+    amp_measure = cv::mean(amp_roi);
   }
 
-  // === calculate mean amplitude
-  // amp_zones = np.array([a.mean() if a.size > 0 else 0 for a in amp_list]);
-
-  // idx_nonzero = (amp_zones > 0);
-  cv::Rect roi(this->ae_roi_left_px, this->ae_roi_top_px, ampimg.cols - this->ae_roi_left_px - this->ae_roi_right_px, ampimg.rows - this->ae_roi_top_px - this->ae_roi_bottom_px); // x,y,width,height
-
-  double amp_measure = cv::mean(ampimg(roi))[0]; // this->zone_weights[idx_nonzero].sum();
-  if (amp_measure == 0)
+  double amp_measure_d = amp_measure[0];
+  if (amp_measure_d == 0)
   {
     return 0;
   }
 
   float alpha = this->ae_target_exp_avg_alpha;
-  this->amp_measure_mean = alpha * this->amp_measure_mean + (1 - alpha) * amp_measure;
+  this->amp_measure_mean = alpha * this->amp_measure_mean + (1 - alpha) * amp_measure_d;
 
   return this->amp_measure_mean;
 }
@@ -1306,7 +1304,8 @@ void ToFSensor::ae_watchdog()
     config_lock.unlock();
 
     boost::recursive_mutex::scoped_lock lock(this->config_mutex);
-    server_->updateConfig(config);
+    interface_->setIntegrationTime(new_integration);
+    // server_->updateConfig(config);
   }
 }
 std::thread ToFSensor::spawn_ae_update()
