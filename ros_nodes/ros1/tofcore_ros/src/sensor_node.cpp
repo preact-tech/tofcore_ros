@@ -47,6 +47,7 @@ constexpr auto TEMPORAL_ALPHA = "/tof_sensor/temporal_alpha";
 constexpr auto GRADIENT_FILTER = "/tof_sensor/gradient_filter";
 constexpr auto GRADIENT_KERNEL = "/tof_sensor/gradient_kernel";
 constexpr auto GRADIENT_THRESHOLD = "/tof_sensor/gradient_threshold";
+constexpr auto GRADIENT_FILTER_SUPPORT = "/tof_sensor/gradient_filter_support";
 
 constexpr auto AE_ENABLE = "/tof_sensor/ae_enable";
 
@@ -57,6 +58,21 @@ bool begins_with(const std::string &needle, const std::string &haystack)
 {
   return haystack.rfind(needle, 0) == 0;
 }
+
+cv::Mat neighbour_mask(const cv::Mat& mask, int neighbour_support) {
+  // find pixels that have at least <neighbour_support> neighbours that are flagged as valid
+  cv::Mat kernel = (cv::Mat_<uchar>(3, 3) <<
+      1, 1, 1,
+      1, 0, 1,
+      1, 1, 1);
+  cv::Mat neighbour_count;
+  cv::filter2D(mask / 255, neighbour_count, -1, kernel, cv::Point(-1, -1), 0, cv::BORDER_CONSTANT);
+  cv::Mat mask_new;
+  cv::bitwise_and(mask, (neighbour_count >= neighbour_support), mask_new);
+
+  return mask_new;
+}
+
 
 ToFSensor::ToFSensor(ros::NodeHandle nh)
 {
@@ -290,6 +306,13 @@ void ToFSensor::on_set_parameters_callback(tofcore_ros1::tofcoreConfig &config, 
       ROS_INFO("Handling parameter \"%s\" : %d", parameter.c_str(), value);
       this->gradient_threshold = value;
       this->oldConfig_.gradient_threshold = config.gradient_threshold;
+    }
+    else if (parameter == GRADIENT_FILTER_SUPPORT && config.gradient_filter_support != this->oldConfig_.gradient_filter_support)
+    {
+      int value = config.gradient_filter_support;
+      ROS_INFO("Handling parameter \"%s\" : %d", parameter.c_str(), value);
+      this->gradient_filter_support = config.gradient_filter_support;
+      this->oldConfig_.gradient_filter_support = config.gradient_filter_support;
     }
     else if (parameter == BILATERAL_SPACE && config.bilateral_space != this->oldConfig_.bilateral_space)
     {
@@ -657,15 +680,25 @@ void ToFSensor::publish_pointCloud(const tofcore::Measurement_T &frame, ros::Pub
   }
   if (this->gradient_filter)
   {
+    // apply gradient filtering to cloud
     cv::Mat grad_x, grad_y;
     cv::Mat dst = cv::Mat::zeros(dist_frame.size(), CV_32FC1);
     dist_frame.convertTo(dst, CV_32FC1);
     cv::Sobel(dst, grad_x, CV_64FC1, 1, 0, 2 * this->gradient_kernel + 1);
     cv::Sobel(dst, grad_y, CV_64FC1, 0, 1, 2 * this->gradient_kernel + 1);
     cv::Mat gradient_magnitude;
-    cv::magnitude(grad_x, grad_y, gradient_magnitude);
-    cv::Mat grad_mask = gradient_magnitude > this->gradient_threshold;
-    dist_frame.setTo(cv::Scalar(0), grad_mask);
+    auto grad_x_mask = cv::abs(grad_x) > this->gradient_threshold;
+    auto grad_y_mask = cv::abs(grad_y) > this->gradient_threshold;
+    cv::Mat grad_mask;
+    cv::bitwise_or(grad_x_mask, grad_y_mask, grad_mask);
+    cv::Mat mask_valid;
+    cv::bitwise_not(grad_mask, mask_valid);
+
+    // ensure enough neighbours of each pixel satisfy the gradient condition
+    mask_valid = neighbour_mask(mask_valid, this->gradient_filter_support);
+    cv::Mat mask;
+    cv::bitwise_not(mask_valid, mask);
+    dist_frame.setTo(cv::Scalar(0), mask);
   }
 
   sensor_msgs::PointCloud2Modifier modifier(cloud_msg.point_cloud);
