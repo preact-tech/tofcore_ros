@@ -60,6 +60,9 @@ bool begins_with(const std::string &needle, const std::string &haystack)
 
 ToFSensor::ToFSensor(ros::NodeHandle nh)
 {
+
+    ae_update_thread= spawn_ae_update();
+
   this->n_ = nh;
   int pub_queue = 100;
 
@@ -134,9 +137,9 @@ ToFSensor::ToFSensor(ros::NodeHandle nh)
   else
     config.integration_time = 500;
 
-  //server_->updateConfig(config);
+  // server_->updateConfig(config);
   on_set_parameters_callback(config, 0);
-  this->oldConfig_=config;
+  this->oldConfig_ = config;
   // Setup parameter server call back
   (void)interface_->subscribeMeasurement([&](std::shared_ptr<tofcore::Measurement_T> f) -> void
                                          { updateFrame(*f); });
@@ -149,7 +152,7 @@ void ToFSensor::on_set_parameters_callback(tofcore_ros1::tofcoreConfig &config, 
   // Keeping track of the old config items is clunky, but I can't find a better way to determine which of the parameters have changed
   std::vector<std::string> parameters;
   this->n_.getParamNames(parameters);
-  // config_lock.lock();
+  config_lock.lock();
   for (const auto &parameter : parameters)
   {
     if (parameter == CAPTURE_MODE && config.capture_mode != this->oldConfig_.capture_mode)
@@ -325,8 +328,8 @@ void ToFSensor::on_set_parameters_callback(tofcore_ros1::tofcoreConfig &config, 
     // }
   }
   // boost::recursive_mutex::scoped_lock lock(this->config_mutex);
-  //server_->updateConfig(this->oldConfig_);
-  // config_lock.unlock();
+  // server_->updateConfig(this->oldConfig_);
+  config_lock.unlock();
 }
 
 void ToFSensor::apply_stream_type_param(const std::string &parameter, tofcore_ros1::tofcoreConfig &config)
@@ -1068,10 +1071,8 @@ void ToFSensor::process_ae(short unsigned int integration_time_us, cv::Mat &ampi
 
   if (new_integration != integration_time_us)
   {
-    tofcore_ros1::tofcoreConfig config= this->oldConfig_;
-    config.integration_time = new_integration;
-    boost::recursive_mutex::scoped_lock lock(this->config_mutex);
-    server_->updateConfig(config);
+
+    this->ae_integrations.put(new_integration);
     // on_set_parameters_callback(config, 0);
 
     // interface_->setIntegrationTime(new_integration);
@@ -1157,6 +1158,19 @@ float ToFSensor::measured_error()
 }
 void ToFSensor::ae_watchdog()
 {
+  while (true)
+  {
+    int new_integration;
+    this->ae_integrations.take(new_integration);
+    config_lock.lock();
+
+    tofcore_ros1::tofcoreConfig config = this->oldConfig_;
+    config.integration_time = new_integration;
+    config_lock.unlock();
+
+    boost::recursive_mutex::scoped_lock lock(this->config_mutex);
+    server_->updateConfig(config);
+  }
 }
 std::thread ToFSensor::spawn_ae_update()
 {
