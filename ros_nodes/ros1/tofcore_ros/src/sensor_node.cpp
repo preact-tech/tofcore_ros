@@ -325,7 +325,7 @@ void ToFSensor::on_set_parameters_callback(tofcore_ros1::tofcoreConfig &config, 
     // }
   }
   // boost::recursive_mutex::scoped_lock lock(this->config_mutex);
-  server_->updateConfig(this->oldConfig_);
+  //server_->updateConfig(this->oldConfig_);
   // config_lock.unlock();
 }
 
@@ -1070,6 +1070,7 @@ void ToFSensor::process_ae(short unsigned int integration_time_us, cv::Mat &ampi
   {
     tofcore_ros1::tofcoreConfig config= this->oldConfig_;
     config.integration_time = new_integration;
+    boost::recursive_mutex::scoped_lock lock(this->config_mutex);
     server_->updateConfig(config);
     // on_set_parameters_callback(config, 0);
 
