@@ -1199,6 +1199,7 @@ void ToFSensor::ae_watchdog()
 
     tofcore_ros1::tofcoreConfig config = this->oldConfig_;
     config.integration_time = new_integration;
+    interface_->setIntegrationTime(new_integration);
     config_lock.unlock();
 
     boost::recursive_mutex::scoped_lock lock(this->config_mutex);
