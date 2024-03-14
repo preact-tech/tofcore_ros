@@ -86,7 +86,7 @@ private:
   float ae_rc_speed_factor = 0.2;
   float ae_rc_speed_factor_fast = 0.9;
   float ae_rc_rel_error_thresh = 0.1;
-  float ae_rc_min_amp = 50.0;
+  int ae_rc_min_amp = 50;
   bool ae_rc_apply_min_reflect_thresh = true;
 
   float ae_min_integration_time_us = 10;

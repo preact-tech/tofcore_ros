@@ -50,6 +50,19 @@ constexpr auto GRADIENT_THRESHOLD = "/tof_sensor/gradient_threshold";
 constexpr auto GRADIENT_FILTER_SUPPORT = "/tof_sensor/gradient_filter_support";
 
 constexpr auto AE_ENABLE = "/tof_sensor/ae_enable";
+constexpr auto AE_TARGET_MEAN_AMP = "/tof_sensor/ae_target_mean_amp";
+constexpr auto AE_TARGET_EXP_AVG_ALPHA = "/tof_sensor/ae_target_exp_avg_alpha";
+constexpr auto AE_RC_SPEED_FACTOR = "/tof_sensor/ae_rc_speed_factor";
+constexpr auto AE_RC_SPEED_FACTOR_FAST = "/tof_sensor/ae_rc_speed_factor_fast";
+constexpr auto AE_RC_REL_ERROR_THRESH = "/tof_sensor/ae_rc_rel_error_thresh";
+constexpr auto AE_RC_MIN_AMP = "/tof_sensor/ae_rc_min_amp";
+constexpr auto AE_RC_APPLY_MIN_REFLECT_THRESH = "/tof_sensor/ae_rc_apply_min_reflect_thresh";
+constexpr auto AE_MIN_INTEGRATION_TIME_US = "/tof_sensor/ae_min_integration_time_us";
+constexpr auto AE_MAX_INTEGRATION_TIME_US = "/tof_sensor/ae_max_integration_time_us";
+constexpr auto AE_ROI_TOP_PX = "/tof_sensor/ae_roi_top_px";
+constexpr auto AE_ROI_BOTTOM_PX = "/tof_sensor/ae_roi_bottom_px";
+constexpr auto AE_ROI_LEFT_PX = "/tof_sensor/ae_roi_left_px";
+constexpr auto AE_ROI_RIGHT_PX = "/tof_sensor/ae_roi_right_px";
 
 std::vector<double> rays_x, rays_y, rays_z;
 
@@ -59,12 +72,12 @@ bool begins_with(const std::string &needle, const std::string &haystack)
   return haystack.rfind(needle, 0) == 0;
 }
 
-cv::Mat neighbour_mask(const cv::Mat& mask, int neighbour_support) {
+cv::Mat neighbour_mask(const cv::Mat &mask, int neighbour_support)
+{
   // find pixels that have at least <neighbour_support> neighbours that are flagged as valid
-  cv::Mat kernel = (cv::Mat_<uchar>(3, 3) <<
-      1, 1, 1,
-      1, 0, 1,
-      1, 1, 1);
+  cv::Mat kernel = (cv::Mat_<uchar>(3, 3) << 1, 1, 1,
+                    1, 0, 1,
+                    1, 1, 1);
   cv::Mat neighbour_count;
   cv::filter2D(mask / 255, neighbour_count, -1, kernel, cv::Point(-1, -1), 0, cv::BORDER_CONSTANT);
   cv::Mat mask_new;
@@ -73,11 +86,10 @@ cv::Mat neighbour_mask(const cv::Mat& mask, int neighbour_support) {
   return mask_new;
 }
 
-
 ToFSensor::ToFSensor(ros::NodeHandle nh)
 {
 
-    ae_update_thread= spawn_ae_update();
+  ae_update_thread = spawn_ae_update();
 
   this->n_ = nh;
   int pub_queue = 100;
@@ -286,13 +298,6 @@ void ToFSensor::on_set_parameters_callback(tofcore_ros1::tofcoreConfig &config, 
       this->gradient_filter = value;
       this->oldConfig_.gradient_filter = config.gradient_filter;
     }
-    else if (parameter == AE_ENABLE && config.ae_enable != this->oldConfig_.ae_enable)
-    {
-      bool value = config.ae_enable;
-      ROS_INFO("Handling parameter \"%s\" : %s", parameter.c_str(), (value ? "true" : "false"));
-      this->ae_enable = value;
-      this->oldConfig_.ae_enable = config.ae_enable;
-    }
     else if (parameter == GRADIENT_KERNEL && config.gradient_kernel != this->oldConfig_.gradient_kernel)
     {
       int value = config.gradient_kernel;
@@ -336,6 +341,104 @@ void ToFSensor::on_set_parameters_callback(tofcore_ros1::tofcoreConfig &config, 
       this->hdr_integrations = value;
       this->apply_vsm_param(parameter, config);
       this->oldConfig_.hdr_integrations = config.hdr_integrations;
+    }
+    else if (parameter == AE_ENABLE && config.ae_enable != this->oldConfig_.ae_enable)
+    {
+      bool value = config.ae_enable;
+      ROS_INFO("Handling parameter \"%s\" : %s", parameter.c_str(), (value ? "true" : "false"));
+      this->ae_enable = value;
+      this->oldConfig_.ae_enable = config.ae_enable;
+    }
+    else if (parameter == AE_TARGET_MEAN_AMP && config.ae_target_mean_amp != this->oldConfig_.ae_target_mean_amp)
+    {
+      float value = config.ae_target_mean_amp;
+      ROS_INFO("Handling parameter \"%s\" : %s", parameter.c_str(), (value ? "true" : "false"));
+      this->ae_target_mean_amp = value;
+      this->oldConfig_.ae_target_mean_amp = config.ae_target_mean_amp;
+    }
+    else if (parameter == AE_TARGET_EXP_AVG_ALPHA && config.ae_target_exp_avg_alpha != this->oldConfig_.ae_target_exp_avg_alpha)
+    {
+      float value = config.ae_target_exp_avg_alpha;
+      ROS_INFO("Handling parameter \"%s\" : %s", parameter.c_str(), (value ? "true" : "false"));
+      this->ae_target_exp_avg_alpha = value;
+      this->oldConfig_.ae_target_exp_avg_alpha = config.ae_target_exp_avg_alpha;
+    }
+    else if (parameter == AE_RC_SPEED_FACTOR && config.ae_rc_speed_factor != this->oldConfig_.ae_rc_speed_factor)
+    {
+      float value = config.ae_rc_speed_factor;
+      ROS_INFO("Handling parameter \"%s\" : %s", parameter.c_str(), (value ? "true" : "false"));
+      this->ae_rc_speed_factor = value;
+      this->oldConfig_.ae_rc_speed_factor = config.ae_rc_speed_factor;
+    }
+    else if (parameter == AE_RC_SPEED_FACTOR_FAST && config.ae_rc_speed_factor_fast != this->oldConfig_.ae_rc_speed_factor_fast)
+    {
+      float value = config.ae_rc_speed_factor_fast;
+      ROS_INFO("Handling parameter \"%s\" : %s", parameter.c_str(), (value ? "true" : "false"));
+      this->ae_rc_speed_factor_fast = value;
+      this->oldConfig_.ae_rc_speed_factor_fast = config.ae_rc_speed_factor_fast;
+    }
+    else if (parameter == AE_RC_REL_ERROR_THRESH && config.ae_rc_rel_error_thresh != this->oldConfig_.ae_rc_rel_error_thresh)
+    {
+      float value = config.ae_rc_rel_error_thresh;
+      ROS_INFO("Handling parameter \"%s\" : %s", parameter.c_str(), (value ? "true" : "false"));
+      this->ae_rc_rel_error_thresh = value;
+      this->oldConfig_.ae_rc_rel_error_thresh = config.ae_rc_rel_error_thresh;
+    }
+    else if (parameter == AE_RC_MIN_AMP && config.ae_rc_min_amp != this->oldConfig_.ae_rc_min_amp)
+    {
+      int value = config.ae_rc_min_amp;
+      ROS_INFO("Handling parameter \"%s\" : %s", parameter.c_str(), (value ? "true" : "false"));
+      this->ae_rc_min_amp = value;
+      this->oldConfig_.ae_rc_min_amp = config.ae_rc_min_amp;
+    }
+    else if (parameter == AE_RC_APPLY_MIN_REFLECT_THRESH && config.ae_rc_apply_min_reflect_thresh != this->oldConfig_.ae_rc_apply_min_reflect_thresh)
+    {
+      bool value = config.ae_rc_apply_min_reflect_thresh;
+      ROS_INFO("Handling parameter \"%s\" : %s", parameter.c_str(), (value ? "true" : "false"));
+      this->ae_rc_apply_min_reflect_thresh = value;
+      this->oldConfig_.ae_rc_apply_min_reflect_thresh = config.ae_rc_apply_min_reflect_thresh;
+    }
+    else if (parameter == AE_MIN_INTEGRATION_TIME_US && config.ae_min_integration_time_us != this->oldConfig_.ae_min_integration_time_us)
+    {
+      int value = config.ae_min_integration_time_us;
+      ROS_INFO("Handling parameter \"%s\" : %s", parameter.c_str(), (value ? "true" : "false"));
+      this->ae_min_integration_time_us = value;
+      this->oldConfig_.ae_min_integration_time_us = config.ae_min_integration_time_us;
+    }
+    else if (parameter == AE_MAX_INTEGRATION_TIME_US && config.ae_max_integration_time_us != this->oldConfig_.ae_max_integration_time_us)
+    {
+      int value = config.ae_max_integration_time_us;
+      ROS_INFO("Handling parameter \"%s\" : %s", parameter.c_str(), (value ? "true" : "false"));
+      this->ae_max_integration_time_us = value;
+      this->oldConfig_.ae_max_integration_time_us = config.ae_max_integration_time_us;
+    }
+    else if (parameter == AE_ROI_TOP_PX && config.ae_roi_top_px != this->oldConfig_.ae_roi_top_px)
+    {
+      int value = config.ae_roi_top_px;
+      ROS_INFO("Handling parameter \"%s\" : %s", parameter.c_str(), (value ? "true" : "false"));
+      this->ae_roi_top_px = value;
+      this->oldConfig_.ae_roi_top_px = config.ae_roi_top_px;
+    }
+    else if (parameter == AE_ROI_BOTTOM_PX && config.ae_roi_bottom_px != this->oldConfig_.ae_roi_bottom_px)
+    {
+      int value = config.ae_roi_bottom_px;
+      ROS_INFO("Handling parameter \"%s\" : %s", parameter.c_str(), (value ? "true" : "false"));
+      this->ae_roi_bottom_px = value;
+      this->oldConfig_.ae_roi_bottom_px = config.ae_roi_bottom_px;
+    }
+    else if (parameter == AE_ROI_LEFT_PX && config.ae_roi_left_px != this->oldConfig_.ae_roi_left_px)
+    {
+      int value = config.ae_roi_left_px;
+      ROS_INFO("Handling parameter \"%s\" : %s", parameter.c_str(), (value ? "true" : "false"));
+      this->ae_roi_left_px = value;
+      this->oldConfig_.ae_roi_left_px = config.ae_roi_left_px;
+    }
+    else if (parameter == AE_ROI_RIGHT_PX && config.ae_roi_right_px != this->oldConfig_.ae_roi_right_px)
+    {
+      int value = config.ae_roi_right_px;
+      ROS_INFO("Handling parameter \"%s\" : %s", parameter.c_str(), (value ? "true" : "false"));
+      this->ae_roi_right_px = value;
+      this->oldConfig_.ae_roi_right_px = config.ae_roi_right_px;
     }
     // else if (parameter == TEMPORAL_FILTER && config.temporal_filter != this->oldConfig_.temporal_filter)
     // {
