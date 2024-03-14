@@ -80,7 +80,7 @@ private:
   // Auto-Exposure Parameters
   std::thread ae_update_thread;
   BlockingQueue<int> ae_integrations;
-  bool ae_enable = false;
+  bool ae_enable;
   int ae_target_mean_amp = 800;
   float ae_target_exp_avg_alpha = 0.1;
   float ae_rc_speed_factor = 0.2;
