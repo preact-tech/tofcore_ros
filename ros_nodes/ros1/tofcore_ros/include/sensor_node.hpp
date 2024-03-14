@@ -24,6 +24,7 @@
 #include <sensor_msgs/image_encodings.h>
 #include <dynamic_reconfigure/server.h>
 #include <tofcore_ros1/tofcoreConfig.h>
+#include <nonblocking_queue.h>
 
 #include <opencv2/core.hpp>
 #include <opencv2/imgproc.hpp>
@@ -49,6 +50,7 @@ private:
   ros::NodeHandle n_;
   std::string sensor_location_;
   boost::recursive_mutex config_mutex;
+  std::mutex config_lock;
   // dynamic_reconfigure::Server<tofcore_ros1::tofcoreConfig> server_;
   // dynamic_reconfigure::Server<tofcore_ros1::tofcoreConfig>::CallbackType f_;
   tofcore_ros1::tofcoreConfig oldConfig_;
@@ -75,7 +77,9 @@ private:
   int saturation_thresh = 2000;
   std::mutex m;
   // Auto-Exposure Parameters
-  bool ae_enable = true;
+  std::thread ae_update_thread;
+  BlockingQueue<int> ae_integrations;
+  bool ae_enable;
   int ae_target_mean_amp = 800;
   float ae_target_exp_avg_alpha = 0.1;
   float ae_rc_speed_factor = 0.2;
@@ -148,6 +152,8 @@ private:
   float obtain_error(float amp_measure_max, float amp_measure_mean, int int_us);
   int control_recursive(int integration_time_us , float amp_measure_mean);
   float measured_error();
+  std::thread spawn_ae_update();
+  void ae_watchdog();
 };
 
 #endif

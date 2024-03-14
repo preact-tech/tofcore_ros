@@ -48,6 +48,8 @@ constexpr auto GRADIENT_FILTER = "/tof_sensor/gradient_filter";
 constexpr auto GRADIENT_KERNEL = "/tof_sensor/gradient_kernel";
 constexpr auto GRADIENT_THRESHOLD = "/tof_sensor/gradient_threshold";
 
+constexpr auto AE_ENABLE = "/tof_sensor/ae_enable";
+
 std::vector<double> rays_x, rays_y, rays_z;
 
 /// Quick helper function that return true if the string haystack starts with the string needle
@@ -80,8 +82,11 @@ ToFSensor::ToFSensor(ros::NodeHandle nh)
   sensor_temperature_bl = this->n_.advertise<sensor_msgs::Temperature>("sensor_temperature_bl", pub_queue);
   sensor_temperature_br = this->n_.advertise<sensor_msgs::Temperature>("sensor_temperature_br", pub_queue);
 
-  interface_.reset(new tofcore::Sensor("/dev/ttyACM0"));
-  interface_->stopStream();
+  std::vector<tofcore::device_info_t> devices = tofcore::find_all_devices(std::chrono::seconds(5), std::numeric_limits<int>::max());
+  interface_.reset(new tofcore::Sensor(devices.begin()->connector_uri));
+
+  // interface_->stopStream();
+
   dynamic_reconfigure::Server<tofcore_ros1::tofcoreConfig>::CallbackType f_ = boost::bind(&ToFSensor::on_set_parameters_callback, this, boost::placeholders::_1, boost::placeholders::_2);
   server_ = new dynamic_reconfigure::Server<tofcore_ros1::tofcoreConfig>(this->config_mutex, this->n_);
   server_->setCallback(f_);
@@ -92,6 +97,7 @@ ToFSensor::ToFSensor(ros::NodeHandle nh)
   // Setup ROS parameters
   tofcore_ros1::tofcoreConfig config;
   server_->getConfigDefault(config);
+  // server_->getConfigMin(this->oldConfig_);
 
   // Get sensor info
   TofComm::versionData_t versionData{};
@@ -128,9 +134,9 @@ ToFSensor::ToFSensor(ros::NodeHandle nh)
   else
     config.integration_time = 500;
 
-  server_->updateConfig(config);
-      on_set_parameters_callback(config, 0);
-
+  //server_->updateConfig(config);
+  on_set_parameters_callback(config, 0);
+  this->oldConfig_=config;
   // Setup parameter server call back
   (void)interface_->subscribeMeasurement([&](std::shared_ptr<tofcore::Measurement_T> f) -> void
                                          { updateFrame(*f); });
@@ -143,7 +149,7 @@ void ToFSensor::on_set_parameters_callback(tofcore_ros1::tofcoreConfig &config, 
   // Keeping track of the old config items is clunky, but I can't find a better way to determine which of the parameters have changed
   std::vector<std::string> parameters;
   this->n_.getParamNames(parameters);
-
+  // config_lock.lock();
   for (const auto &parameter : parameters)
   {
     if (parameter == CAPTURE_MODE && config.capture_mode != this->oldConfig_.capture_mode)
@@ -153,113 +159,141 @@ void ToFSensor::on_set_parameters_callback(tofcore_ros1::tofcoreConfig &config, 
       {
         this->apply_stream_type_param(parameter, config);
       }
+      this->oldConfig_.capture_mode = config.capture_mode;
     }
     else if (parameter == INTEGRATION_TIME && config.integration_time != this->oldConfig_.integration_time)
     {
       this->apply_integration_time_param(parameter, config);
+      this->oldConfig_.integration_time = config.integration_time;
     }
     else if (parameter == STREAMING_STATE && config.streaming != this->oldConfig_.streaming)
     {
       this->apply_streaming_param(parameter, config);
+      this->oldConfig_.streaming = config.streaming;
     }
     else if (parameter == MODULATION_FREQUENCY && config.modulation_frequency != this->oldConfig_.modulation_frequency)
     {
       this->apply_modulation_frequency_param(parameter, config);
+      this->oldConfig_.modulation_frequency = config.modulation_frequency;
     }
     else if (parameter == DISTANCE_OFFSET && config.distance_offset != this->oldConfig_.distance_offset)
     {
       this->apply_distance_offset_param(parameter, config);
+      this->oldConfig_.distance_offset = config.distance_offset;
     }
     else if (parameter == MINIMUM_AMPLITUDE && config.minimum_amplitude != this->oldConfig_.minimum_amplitude)
     {
       this->apply_minimum_amplitude_param(parameter, config);
+      this->oldConfig_.minimum_amplitude = config.minimum_amplitude;
     }
     else if (parameter == MAXIMUM_AMPLITUDE && config.maximum_amplitude != this->oldConfig_.maximum_amplitude)
     {
       int value = config.maximum_amplitude;
       ROS_INFO("Handling parameter \"%s\" : %d", parameter.c_str(), (value));
       this->maximum_amplitude = value;
+      this->oldConfig_.maximum_amplitude = config.maximum_amplitude;
     }
     else if (parameter == FLIP_HORIZONTAL && config.flip_hotizontal != this->oldConfig_.flip_hotizontal)
     {
       this->apply_flip_horizontal_param(parameter, config);
+      this->oldConfig_.flip_hotizontal = config.flip_hotizontal;
     }
     else if (parameter == FLIP_VERITCAL && config.flip_vertical != this->oldConfig_.flip_vertical)
     {
       this->apply_flip_vertical_param(parameter, config);
+      this->oldConfig_.flip_vertical = config.flip_vertical;
     }
     else if (parameter == BINNING && config.binning != this->oldConfig_.binning)
     {
       this->apply_binning_param(parameter, config);
+      this->oldConfig_.binning = config.binning;
     }
     else if (parameter == SENSOR_NAME && config.sensor_name != this->oldConfig_.sensor_name)
     {
       this->apply_sensor_name_param(parameter, config);
+      this->oldConfig_.sensor_name = config.sensor_name;
     }
     else if (parameter == SENSOR_LOCATION && config.sensor_location != this->oldConfig_.sensor_location)
     {
       this->apply_sensor_location_param(parameter, config);
+      this->oldConfig_.sensor_location = config.sensor_location;
     }
     else if (parameter == MEDIAN_FILTER && config.median_filter != this->oldConfig_.median_filter)
     {
       bool value = config.median_filter;
       ROS_INFO("Handling parameter \"%s\" : %s", parameter.c_str(), (value ? "true" : "false"));
       this->median_filter = value;
+      this->oldConfig_.median_filter = config.median_filter;
     }
     else if (parameter == MEDIAN_KERNEL && config.median_kernel != this->oldConfig_.median_kernel)
     {
       int value = config.median_kernel;
       ROS_INFO("Handling parameter \"%s\" : %d", parameter.c_str(), int(value / 2) * 2 + 1);
       this->median_kernel = int(value / 2) * 2 + 1;
+      this->oldConfig_.median_kernel = config.median_kernel;
     }
     else if (parameter == BILATERAL_FILTER && config.bilateral_filter != this->oldConfig_.bilateral_filter)
     {
       bool value = config.bilateral_filter;
       ROS_INFO("Handling parameter \"%s\" : %s", parameter.c_str(), (value ? "true" : "false"));
       this->bilateral_filter = value;
+      this->oldConfig_.bilateral_filter = config.bilateral_filter;
     }
     else if (parameter == BILATERAL_COLOR && config.bilateral_color != this->oldConfig_.bilateral_color)
     {
       int value = config.bilateral_color;
       ROS_INFO("Handling parameter \"%s\" : %d", parameter.c_str(), value);
       this->bilateral_color = value;
+      this->oldConfig_.bilateral_color = config.bilateral_color;
     }
     else if (parameter == BILATERAL_KERNEL && config.bilateral_kernel != this->oldConfig_.bilateral_kernel)
     {
       int value = config.bilateral_kernel;
       ROS_INFO("Handling parameter \"%s\" : %d", parameter.c_str(), int(value / 2) * 2 + 1);
       this->bilateral_kernel = int(value / 2) * 2 + 1;
+      this->oldConfig_.bilateral_kernel = config.bilateral_kernel;
     }
     else if (parameter == BILATERAL_SPACE && config.bilateral_space != this->oldConfig_.bilateral_space)
     {
       int value = config.bilateral_space;
       ROS_INFO("Handling parameter \"%s\" : %d", parameter.c_str(), value);
       this->bilateral_space = value;
+      this->oldConfig_.bilateral_space = config.bilateral_space;
     }
     else if (parameter == GRADIENT_FILTER && config.gradient_filter != this->oldConfig_.gradient_filter)
     {
       bool value = config.gradient_filter;
       ROS_INFO("Handling parameter \"%s\" : %s", parameter.c_str(), (value ? "true" : "false"));
       this->gradient_filter = value;
+      this->oldConfig_.gradient_filter = config.gradient_filter;
+    }
+    else if (parameter == AE_ENABLE && config.ae_enable != this->oldConfig_.ae_enable)
+    {
+      bool value = config.ae_enable;
+      ROS_INFO("Handling parameter \"%s\" : %s", parameter.c_str(), (value ? "true" : "false"));
+      this->ae_enable = value;
+      this->oldConfig_.ae_enable = config.ae_enable;
     }
     else if (parameter == GRADIENT_KERNEL && config.gradient_kernel != this->oldConfig_.gradient_kernel)
     {
       int value = config.gradient_kernel;
       ROS_INFO("Handling parameter \"%s\" : %d", parameter.c_str(), int(value / 2) * 2 + 1);
       this->gradient_kernel = int(value / 2) * 2 + 1;
-      ;
+      this->oldConfig_.gradient_kernel = config.gradient_kernel;
     }
     else if (parameter == GRADIENT_THRESHOLD && config.gradient_threshold != this->oldConfig_.gradient_threshold)
     {
       int value = config.gradient_threshold;
       ROS_INFO("Handling parameter \"%s\" : %d", parameter.c_str(), value);
       this->gradient_threshold = value;
+      this->oldConfig_.gradient_threshold = config.gradient_threshold;
     }
     else if (parameter == BILATERAL_SPACE && config.bilateral_space != this->oldConfig_.bilateral_space)
     {
       int value = config.bilateral_space;
       ROS_INFO("Handling parameter \"%s\" : %d", parameter.c_str(), value);
       this->bilateral_space = value;
+      this->oldConfig_.bilateral_space = config.bilateral_space;
     }
     else if (parameter == HDR_ENABLE && config.hdr_enable != this->oldConfig_.hdr_enable)
     {
@@ -267,6 +301,7 @@ void ToFSensor::on_set_parameters_callback(tofcore_ros1::tofcoreConfig &config, 
       ROS_INFO("Handling parameter \"%s\" : %s", parameter.c_str(), (value ? "true" : "false"));
       this->hdr_enable = value;
       this->apply_vsm_param(parameter, config);
+      this->oldConfig_.hdr_enable = config.hdr_enable;
     }
     else if (parameter == HDR_INTEGRATIONS && config.hdr_integrations != this->oldConfig_.hdr_integrations)
     {
@@ -274,6 +309,7 @@ void ToFSensor::on_set_parameters_callback(tofcore_ros1::tofcoreConfig &config, 
       ROS_INFO("Handling parameter \"%s\" : %s", parameter.c_str(), value.c_str());
       this->hdr_integrations = value;
       this->apply_vsm_param(parameter, config);
+      this->oldConfig_.hdr_integrations = config.hdr_integrations;
     }
     // else if (parameter == TEMPORAL_FILTER && config.temporal_filter != this->oldConfig_.temporal_filter)
     // {
@@ -288,7 +324,9 @@ void ToFSensor::on_set_parameters_callback(tofcore_ros1::tofcoreConfig &config, 
     //   this->temporal_alpha = value;
     // }
   }
-  this->oldConfig_ = config;
+  // boost::recursive_mutex::scoped_lock lock(this->config_mutex);
+  server_->updateConfig(this->oldConfig_);
+  // config_lock.unlock();
 }
 
 void ToFSensor::apply_stream_type_param(const std::string &parameter, tofcore_ros1::tofcoreConfig &config)
@@ -316,6 +354,7 @@ void ToFSensor::apply_stream_type_param(const std::string &parameter, tofcore_ro
   {
     ROS_ERROR("Unknown stream type: %s", value.c_str());
   }
+  std::this_thread::sleep_for(std::chrono::seconds(1));
 }
 
 void ToFSensor::apply_integration_time_param(const std::string &parameter, tofcore_ros1::tofcoreConfig &config)
@@ -427,7 +466,7 @@ void ToFSensor::apply_sensor_location_param(const std::string &parameter, tofcor
 void ToFSensor::apply_vsm_param(const std::string &parameter, tofcore_ros1::tofcoreConfig &config)
 {
   auto value = config.hdr_enable;
-
+  this->hdr_enable = value;
   ROS_INFO("Handling parameter \"%s\" : %s", parameter.c_str(), (value ? "true" : "false"));
 
   std::vector<std::string> integration_times;
@@ -585,9 +624,10 @@ void ToFSensor::publish_pointCloud(const tofcore::Measurement_T &frame, ros::Pub
 
   // Adding this to the message for the auto exposure node
   // Need to check if it exists because this is optional value
+  int integration_time = 500;
   if (frame.integration_time())
   {
-    auto integration_time = *std::move(frame.integration_time());
+    integration_time = *std::move(frame.integration_time());
     cloud_msg.integration_time = integration_time;
   }
 
@@ -595,7 +635,7 @@ void ToFSensor::publish_pointCloud(const tofcore::Measurement_T &frame, ros::Pub
   if (this->ae_enable)
   {
     cv::Mat amp_frame = cv::Mat(frame.height(), frame.width(), CV_16UC1, (void *)frame.amplitude().begin());
-    process_ae(*std::move(frame.integration_time()), amp_frame, 0.01);
+    process_ae(integration_time, amp_frame, 0.01);
   }
   if (this->median_filter)
   {
@@ -945,7 +985,6 @@ void ToFSensor::publish_DCSData(const tofcore::Measurement_T &frame, const ros::
 
 void ToFSensor::updateFrame(const tofcore::Measurement_T &frame)
 {
-  // ROS_INFO("Updating Frame ");
   auto stamp = ros::Time::now();
   switch (frame.type())
   {
@@ -963,6 +1002,7 @@ void ToFSensor::updateFrame(const tofcore::Measurement_T &frame)
   }
   case tofcore::Measurement_T::DataType::DISTANCE_AMPLITUDE:
   {
+
     if (this->hdr_enable)
     {
 
@@ -980,6 +1020,7 @@ void ToFSensor::updateFrame(const tofcore::Measurement_T &frame)
     }
     else
     {
+
       publish_amplData(frame, pub_amplitude_, stamp);
       publish_distData(frame, pub_distance_, stamp);
       publish_pointCloud(frame, pub_pcd_, pub_cust_pcd_, stamp);
@@ -1027,11 +1068,12 @@ void ToFSensor::process_ae(short unsigned int integration_time_us, cv::Mat &ampi
 
   if (new_integration != integration_time_us)
   {
+    tofcore_ros1::tofcoreConfig config= this->oldConfig_;
+    config.integration_time = new_integration;
+    server_->updateConfig(config);
+    // on_set_parameters_callback(config, 0);
 
-    this->oldConfig_.integration_time = new_integration;
-    on_set_parameters_callback(this->oldConfig_, 0);
-      server_->updateConfig(this->oldConfig_);
-
+    // interface_->setIntegrationTime(new_integration);
   }
 }
 
@@ -1111,4 +1153,11 @@ int ToFSensor::control_recursive(int integration_time_us, float amp_measure_mean
 float ToFSensor::measured_error()
 {
   return this->error_measure;
+}
+void ToFSensor::ae_watchdog()
+{
+}
+std::thread ToFSensor::spawn_ae_update()
+{
+  return std::thread(&ToFSensor::ae_watchdog, this);
 }
