@@ -63,6 +63,7 @@ constexpr auto AE_ROI_TOP_PX = "/tof_sensor/ae_roi_top_px";
 constexpr auto AE_ROI_BOTTOM_PX = "/tof_sensor/ae_roi_bottom_px";
 constexpr auto AE_ROI_LEFT_PX = "/tof_sensor/ae_roi_left_px";
 constexpr auto AE_ROI_RIGHT_PX = "/tof_sensor/ae_roi_right_px";
+constexpr auto AE_DEADBAND_THRESH = "/tof_sensor/ae_deadband_thresh";
 
 std::vector<double> rays_x, rays_y, rays_z;
 
@@ -172,7 +173,8 @@ ToFSensor::ToFSensor(ros::NodeHandle nh)
   else
     config.integration_time = 500;
 
-  // server_->updateConfig(config);
+  boost::recursive_mutex::scoped_lock lock(this->config_mutex);
+  server_->updateConfig(config);
   on_set_parameters_callback(config, 0);
   this->oldConfig_ = config;
   // Setup parameter server call back
@@ -359,44 +361,51 @@ void ToFSensor::on_set_parameters_callback(tofcore_ros1::tofcoreConfig &config, 
     else if (parameter == AE_TARGET_MEAN_AMP && config.ae_target_mean_amp != this->oldConfig_.ae_target_mean_amp)
     {
       float value = config.ae_target_mean_amp;
-      ROS_INFO("Handling parameter \"%s\" : %s", parameter.c_str(), (value ? "true" : "false"));
+      ROS_INFO("Handling parameter \"%s\" : %f", parameter.c_str(), value );
       this->ae_target_mean_amp = value;
       this->oldConfig_.ae_target_mean_amp = config.ae_target_mean_amp;
     }
     else if (parameter == AE_TARGET_EXP_AVG_ALPHA && config.ae_target_exp_avg_alpha != this->oldConfig_.ae_target_exp_avg_alpha)
     {
       float value = config.ae_target_exp_avg_alpha;
-      ROS_INFO("Handling parameter \"%s\" : %s", parameter.c_str(), (value ? "true" : "false"));
+      ROS_INFO("Handling parameter \"%s\" : %f", parameter.c_str(), value );
       this->ae_target_exp_avg_alpha = value;
       this->oldConfig_.ae_target_exp_avg_alpha = config.ae_target_exp_avg_alpha;
     }
     else if (parameter == AE_RC_SPEED_FACTOR && config.ae_rc_speed_factor != this->oldConfig_.ae_rc_speed_factor)
     {
       float value = config.ae_rc_speed_factor;
-      ROS_INFO("Handling parameter \"%s\" : %s", parameter.c_str(), (value ? "true" : "false"));
+      ROS_INFO("Handling parameter \"%s\" : %f", parameter.c_str(), value );
       this->ae_rc_speed_factor = value;
       this->oldConfig_.ae_rc_speed_factor = config.ae_rc_speed_factor;
     }
     else if (parameter == AE_RC_SPEED_FACTOR_FAST && config.ae_rc_speed_factor_fast != this->oldConfig_.ae_rc_speed_factor_fast)
     {
       float value = config.ae_rc_speed_factor_fast;
-      ROS_INFO("Handling parameter \"%s\" : %s", parameter.c_str(), (value ? "true" : "false"));
+      ROS_INFO("Handling parameter \"%s\" : %f", parameter.c_str(), value );
       this->ae_rc_speed_factor_fast = value;
       this->oldConfig_.ae_rc_speed_factor_fast = config.ae_rc_speed_factor_fast;
     }
     else if (parameter == AE_RC_REL_ERROR_THRESH && config.ae_rc_rel_error_thresh != this->oldConfig_.ae_rc_rel_error_thresh)
     {
       float value = config.ae_rc_rel_error_thresh;
-      ROS_INFO("Handling parameter \"%s\" : %s", parameter.c_str(), (value ? "true" : "false"));
+      ROS_INFO("Handling parameter \"%s\" : %f", parameter.c_str(), value );
       this->ae_rc_rel_error_thresh = value;
       this->oldConfig_.ae_rc_rel_error_thresh = config.ae_rc_rel_error_thresh;
     }
     else if (parameter == AE_RC_MIN_AMP && config.ae_rc_min_amp != this->oldConfig_.ae_rc_min_amp)
     {
       int value = config.ae_rc_min_amp;
-      ROS_INFO("Handling parameter \"%s\" : %s", parameter.c_str(), (value ? "true" : "false"));
+      ROS_INFO("Handling parameter \"%s\" : %d", parameter.c_str(), value);
       this->ae_rc_min_amp = value;
       this->oldConfig_.ae_rc_min_amp = config.ae_rc_min_amp;
+    }
+    else if (parameter == AE_DEADBAND_THRESH && config.ae_deadband_thresh != this->oldConfig_.ae_deadband_thresh)
+    {
+      int value = config.ae_deadband_thresh;
+      ROS_INFO("Handling parameter \"%s\" : %d", parameter.c_str(), value);
+      this->ae_deadband_thresh = value;
+      this->oldConfig_.ae_deadband_thresh = config.ae_deadband_thresh;
     }
     else if (parameter == AE_RC_APPLY_MIN_REFLECT_THRESH && config.ae_rc_apply_min_reflect_thresh != this->oldConfig_.ae_rc_apply_min_reflect_thresh)
     {
@@ -408,7 +417,7 @@ void ToFSensor::on_set_parameters_callback(tofcore_ros1::tofcoreConfig &config, 
     else if (parameter == AE_MIN_INTEGRATION_TIME_US && config.ae_min_integration_time_us != this->oldConfig_.ae_min_integration_time_us)
     {
       int value = config.ae_min_integration_time_us;
-      ROS_INFO("Handling parameter \"%s\" : %s", parameter.c_str(), (value ? "true" : "false"));
+      ROS_INFO("Handling parameter \"%s\" : %d", parameter.c_str(), value);
       this->ae_min_integration_time_us = value;
       this->oldConfig_.ae_min_integration_time_us = config.ae_min_integration_time_us;
     }
@@ -1060,7 +1069,7 @@ void ToFSensor::publish_pointCloudHDR(const tofcore::Measurement_T &frame, ros::
     ++count;
     it_d += 1;
   }
-  // This is dumb and redundant but I don't want to break rviz viewer
+  // This is redundant but I don't want to break rviz viewer
   pub.publish(cloud_msg.point_cloud);
   cust_pub.publish(cloud_msg);
 
@@ -1208,25 +1217,21 @@ void ToFSensor::process_ae(short unsigned int integration_time_us, cv::Mat &ampi
 {
   // === calculate new integration time
 
-  //   else:  // this->feedback_type == SaturationFeedbackType.Recursive:
-
   // calculate mean amplitude
   float amp_measure_mean = measure_from_avg(ampimg, integration_time_us);
   int new_integration = control_recursive(integration_time_us, amp_measure_mean);
 
-  if (new_integration != integration_time_us)
+  if (abs(new_integration - integration_time_us) > this->ae_deadband_thresh)
   {
 
     this->ae_integrations.put(new_integration);
     // on_set_parameters_callback(config, 0);
-
     // interface_->setIntegrationTime(new_integration);
   }
 }
 
 float ToFSensor::measure_from_avg(cv::Mat ampimg, int int_us)
 {
-  // amp_list = this->parse_5zones(ampimg);
   cv::Scalar amp_measure;
   cv::Rect roi(this->ae_roi_left_px, this->ae_roi_top_px, ampimg.cols - this->ae_roi_left_px - this->ae_roi_right_px, ampimg.rows - this->ae_roi_top_px - this->ae_roi_bottom_px); // x,y,width,height
   cv::Mat amp_roi ;
@@ -1312,6 +1317,7 @@ void ToFSensor::ae_watchdog()
   {
     int new_integration;
     this->ae_integrations.take(new_integration);
+    ROS_INFO("Automatic Exposure setting integration time to: %d",new_integration );
 
     config_lock.lock();
     tofcore_ros1::tofcoreConfig config = this->oldConfig_;

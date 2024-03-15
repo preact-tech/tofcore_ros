@@ -95,7 +95,7 @@ private:
   int ae_roi_bottom_px = 0;
   int ae_roi_left_px = 0;
   int ae_roi_right_px = 0;
-
+  int ae_deadband_thresh = 20;
   //== = measure
   float amp_measure_max = 0.0;
   float amp_measure_mean = 0.0;
