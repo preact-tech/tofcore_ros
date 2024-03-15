@@ -91,10 +91,10 @@ private:
 
   float ae_min_integration_time_us = 10;
   float ae_max_integration_time_us = 4000;
-  int ae_roi_top_px = 0;
-  int ae_roi_bottom_px = 0;
-  int ae_roi_left_px = 0;
-  int ae_roi_right_px = 0;
+  int ae_roi_x = 0;
+  int ae_roi_y = 0;
+  int ae_roi_width = 320;
+  int ae_roi_height = 240;
   int ae_deadband_thresh = 20;
   //== = measure
   float amp_measure_max = 0.0;

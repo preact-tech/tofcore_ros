@@ -59,10 +59,10 @@ constexpr auto AE_RC_MIN_AMP = "/tof_sensor/ae_rc_min_amp";
 constexpr auto AE_RC_APPLY_MIN_REFLECT_THRESH = "/tof_sensor/ae_rc_apply_min_reflect_thresh";
 constexpr auto AE_MIN_INTEGRATION_TIME_US = "/tof_sensor/ae_min_integration_time_us";
 constexpr auto AE_MAX_INTEGRATION_TIME_US = "/tof_sensor/ae_max_integration_time_us";
-constexpr auto AE_ROI_TOP_PX = "/tof_sensor/ae_roi_top_px";
-constexpr auto AE_ROI_BOTTOM_PX = "/tof_sensor/ae_roi_bottom_px";
-constexpr auto AE_ROI_LEFT_PX = "/tof_sensor/ae_roi_left_px";
-constexpr auto AE_ROI_RIGHT_PX = "/tof_sensor/ae_roi_right_px";
+constexpr auto AE_ROI_X = "/tof_sensor/ae_roi_x";
+constexpr auto AE_ROI_Y = "/tof_sensor/ae_roi_y";
+constexpr auto AE_ROI_WIDTH = "/tof_sensor/ae_roi_width";
+constexpr auto AE_ROI_HEIGHT = "/tof_sensor/ae_roi_height";
 constexpr auto AE_DEADBAND_THRESH = "/tof_sensor/ae_deadband_thresh";
 
 std::vector<double> rays_x, rays_y, rays_z;
@@ -428,33 +428,33 @@ void ToFSensor::on_set_parameters_callback(tofcore_ros1::tofcoreConfig &config, 
       this->ae_max_integration_time_us = value;
       this->oldConfig_.ae_max_integration_time_us = config.ae_max_integration_time_us;
     }
-    else if (parameter == AE_ROI_TOP_PX && config.ae_roi_top_px != this->oldConfig_.ae_roi_top_px)
+    else if (parameter == AE_ROI_X && config.ae_roi_x != this->oldConfig_.ae_roi_x)
     {
-      int value = config.ae_roi_top_px;
+      int value = config.ae_roi_x;
       ROS_INFO("Handling parameter \"%s\" : %d", parameter.c_str(), value);
-      this->ae_roi_top_px = value;
-      this->oldConfig_.ae_roi_top_px = config.ae_roi_top_px;
+      this->ae_roi_x = value;
+      this->oldConfig_.ae_roi_x = config.ae_roi_x;
     }
-    else if (parameter == AE_ROI_BOTTOM_PX && config.ae_roi_bottom_px != this->oldConfig_.ae_roi_bottom_px)
+    else if (parameter == AE_ROI_Y && config.ae_roi_y != this->oldConfig_.ae_roi_y)
     {
-      int value = config.ae_roi_bottom_px;
+      int value = config.ae_roi_y;
       ROS_INFO("Handling parameter \"%s\" : %d", parameter.c_str(), value);
-      this->ae_roi_bottom_px = value;
-      this->oldConfig_.ae_roi_bottom_px = config.ae_roi_bottom_px;
+      this->ae_roi_y = value;
+      this->oldConfig_.ae_roi_y = config.ae_roi_y;
     }
-    else if (parameter == AE_ROI_LEFT_PX && config.ae_roi_left_px != this->oldConfig_.ae_roi_left_px)
+    else if (parameter == AE_ROI_WIDTH && config.ae_roi_width != this->oldConfig_.ae_roi_width)
     {
-      int value = config.ae_roi_left_px;
+      int value = config.ae_roi_width;
       ROS_INFO("Handling parameter \"%s\" : %d", parameter.c_str(), value);
-      this->ae_roi_left_px = value;
-      this->oldConfig_.ae_roi_left_px = config.ae_roi_left_px;
+      this->ae_roi_width = value;
+      this->oldConfig_.ae_roi_width = config.ae_roi_width;
     }
-    else if (parameter == AE_ROI_RIGHT_PX && config.ae_roi_right_px != this->oldConfig_.ae_roi_right_px)
+    else if (parameter == AE_ROI_HEIGHT && config.ae_roi_height != this->oldConfig_.ae_roi_height)
     {
-      int value = config.ae_roi_right_px;
+      int value = config.ae_roi_height;
       ROS_INFO("Handling parameter \"%s\" : %d", parameter.c_str(), value);
-      this->ae_roi_right_px = value;
-      this->oldConfig_.ae_roi_right_px = config.ae_roi_right_px;
+      this->ae_roi_height = value;
+      this->oldConfig_.ae_roi_height = config.ae_roi_height;
     }
     // else if (parameter == TEMPORAL_FILTER && config.temporal_filter != this->oldConfig_.temporal_filter)
     // {
@@ -1233,7 +1233,7 @@ void ToFSensor::process_ae(short unsigned int integration_time_us, cv::Mat &ampi
 float ToFSensor::measure_from_avg(cv::Mat ampimg, int int_us)
 {
   cv::Scalar amp_measure;
-  cv::Rect roi(this->ae_roi_left_px, this->ae_roi_top_px, ampimg.cols - this->ae_roi_left_px - this->ae_roi_right_px, ampimg.rows - this->ae_roi_top_px - this->ae_roi_bottom_px); // x,y,width,height
+  cv::Rect roi(this->ae_roi_x, this->ae_roi_y, this->ae_roi_width , this->ae_roi_height); // x,y,width,height
   cv::Mat amp_roi ;
   try
   {
