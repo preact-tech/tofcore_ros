@@ -119,7 +119,6 @@ catkin_package(
  INCLUDE_DIRS include
  LIBRARIES tofcore_ros1
  CATKIN_DEPENDS roscpp rospy sensor_msgs std_msgs 
- DEPENDS system_lib
 )
 
 ###########
