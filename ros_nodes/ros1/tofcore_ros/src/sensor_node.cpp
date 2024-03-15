@@ -122,9 +122,16 @@ ToFSensor::ToFSensor(ros::NodeHandle nh)
   server_ = new dynamic_reconfigure::Server<tofcore_ros1::tofcoreConfig>(this->config_mutex, this->n_);
   server_->setCallback(f_);
 
-  interface_->getLensInfo(rays_x, rays_y, rays_z);
-  cartesianTransform_.initLensTransform(m_width, HEIGHT, rays_x, rays_y, rays_z);
 
+  try
+  {
+    interface_->getLensInfo(rays_x, rays_y, rays_z);
+    cartesianTransform_.initLensTransform(m_width, HEIGHT, rays_x, rays_y, rays_z);
+  }
+  catch(...)
+  {
+    ROS_FATAL("Error reading lens info from sensor.");
+  }
   // Setup ROS parameters
   tofcore_ros1::tofcoreConfig config;
   server_->getConfigDefault(config);
@@ -733,7 +740,8 @@ void ToFSensor::publish_distData(const tofcore::Measurement_T &frame, ros::Publi
   img.width = static_cast<uint32_t>(frame.width());
   img.encoding = sensor_msgs::image_encodings::MONO16;
   img.step = img.width * frame.pixel_size();
-[ INFO] [1710523748.201525285]: Automatic Exposure setting integration time to: 2550
+  img.is_bigendian = 1;
+  auto distance_bv = frame.distance();
   img.data.resize(distance_bv.size() * sizeof(distance_bv.data()[0]));
   uint8_t *dist_begin = (uint8_t *)distance_bv.data();
   std::copy_n(dist_begin, img.data.size(), img.data.begin());
