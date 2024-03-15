@@ -733,8 +733,7 @@ void ToFSensor::publish_distData(const tofcore::Measurement_T &frame, ros::Publi
   img.width = static_cast<uint32_t>(frame.width());
   img.encoding = sensor_msgs::image_encodings::MONO16;
   img.step = img.width * frame.pixel_size();
-  img.is_bigendian = 1;
-  auto distance_bv = frame.distance();
+[ INFO] [1710523748.201525285]: Automatic Exposure setting integration time to: 2550
   img.data.resize(distance_bv.size() * sizeof(distance_bv.data()[0]));
   uint8_t *dist_begin = (uint8_t *)distance_bv.data();
   std::copy_n(dist_begin, img.data.size(), img.data.begin());
@@ -1222,8 +1221,17 @@ float ToFSensor::measure_from_avg(cv::Mat ampimg, int int_us)
   // amp_list = this->parse_5zones(ampimg);
   cv::Scalar amp_measure;
   cv::Rect roi(this->ae_roi_left_px, this->ae_roi_top_px, ampimg.cols - this->ae_roi_left_px - this->ae_roi_right_px, ampimg.rows - this->ae_roi_top_px - this->ae_roi_bottom_px); // x,y,width,height
-  cv::Mat amp_roi = ampimg(roi);
-
+  cv::Mat amp_roi ;
+  try
+  {
+    amp_roi = ampimg(roi);
+  }
+  catch (cv::Exception &excep)
+  {
+    ROS_INFO("Invalid ROI parameters, using entire image");
+    ROS_INFO("%s", excep.what());
+    amp_roi = ampimg;
+  }
   if (this->ae_rc_apply_min_reflect_thresh)
   {
     // apply min reflectifivity thresholding to amplitude image
@@ -1231,7 +1239,7 @@ float ToFSensor::measure_from_avg(cv::Mat ampimg, int int_us)
 
     // compute the minimum amplitude assuming the maximum integration time is used
     float min_amp = this->ae_rc_min_amp * int_us / this->ae_max_integration_time_us;
-    
+
     // find 'bright enough' pixels in the roi
     amp_measure = cv::mean(amp_roi, amp_roi > min_amp);
   }
@@ -1296,16 +1304,15 @@ void ToFSensor::ae_watchdog()
   {
     int new_integration;
     this->ae_integrations.take(new_integration);
-    config_lock.lock();
 
+    config_lock.lock();
     tofcore_ros1::tofcoreConfig config = this->oldConfig_;
     config.integration_time = new_integration;
     interface_->setIntegrationTime(new_integration);
     config_lock.unlock();
 
-    boost::recursive_mutex::scoped_lock lock(this->config_mutex);
-    interface_->setIntegrationTime(new_integration);
-    // server_->updateConfig(config);
+    //boost::recursive_mutex::scoped_lock lock(this->config_mutex);
+    //server_->updateConfig(config);
   }
 }
 std::thread ToFSensor::spawn_ae_update()
