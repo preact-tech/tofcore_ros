@@ -47,6 +47,23 @@ constexpr auto TEMPORAL_ALPHA = "/tof_sensor/temporal_alpha";
 constexpr auto GRADIENT_FILTER = "/tof_sensor/gradient_filter";
 constexpr auto GRADIENT_KERNEL = "/tof_sensor/gradient_kernel";
 constexpr auto GRADIENT_THRESHOLD = "/tof_sensor/gradient_threshold";
+constexpr auto GRADIENT_FILTER_SUPPORT = "/tof_sensor/gradient_filter_support";
+
+constexpr auto AE_ENABLE = "/tof_sensor/ae_enable";
+constexpr auto AE_TARGET_MEAN_AMP = "/tof_sensor/ae_target_mean_amp";
+constexpr auto AE_TARGET_EXP_AVG_ALPHA = "/tof_sensor/ae_target_exp_avg_alpha";
+constexpr auto AE_RC_SPEED_FACTOR = "/tof_sensor/ae_rc_speed_factor";
+constexpr auto AE_RC_SPEED_FACTOR_FAST = "/tof_sensor/ae_rc_speed_factor_fast";
+constexpr auto AE_RC_REL_ERROR_THRESH = "/tof_sensor/ae_rc_rel_error_thresh";
+constexpr auto AE_RC_MIN_AMP = "/tof_sensor/ae_rc_min_amp";
+constexpr auto AE_RC_APPLY_MIN_REFLECT_THRESH = "/tof_sensor/ae_rc_apply_min_reflect_thresh";
+constexpr auto AE_MIN_INTEGRATION_TIME_US = "/tof_sensor/ae_min_integration_time_us";
+constexpr auto AE_MAX_INTEGRATION_TIME_US = "/tof_sensor/ae_max_integration_time_us";
+constexpr auto AE_ROI_X = "/tof_sensor/ae_roi_x";
+constexpr auto AE_ROI_Y = "/tof_sensor/ae_roi_y";
+constexpr auto AE_ROI_WIDTH = "/tof_sensor/ae_roi_width";
+constexpr auto AE_ROI_HEIGHT = "/tof_sensor/ae_roi_height";
+constexpr auto AE_DEADBAND_THRESH = "/tof_sensor/ae_deadband_thresh";
 
 std::vector<double> rays_x, rays_y, rays_z;
 
@@ -56,8 +73,25 @@ bool begins_with(const std::string &needle, const std::string &haystack)
   return haystack.rfind(needle, 0) == 0;
 }
 
+cv::Mat neighbour_mask(const cv::Mat &mask, int neighbour_support)
+{
+  // find pixels that have at least <neighbour_support> neighbours that are flagged as valid
+  cv::Mat kernel = (cv::Mat_<uchar>(3, 3) << 1, 1, 1,
+                    1, 0, 1,
+                    1, 1, 1);
+  cv::Mat neighbour_count;
+  cv::filter2D(mask / 255, neighbour_count, -1, kernel, cv::Point(-1, -1), 0, cv::BORDER_CONSTANT);
+  cv::Mat mask_new;
+  cv::bitwise_and(mask, (neighbour_count >= neighbour_support), mask_new);
+
+  return mask_new;
+}
+
 ToFSensor::ToFSensor(ros::NodeHandle nh)
 {
+
+  ae_update_thread = spawn_ae_update();
+
   this->n_ = nh;
   int pub_queue = 100;
 
@@ -80,18 +114,29 @@ ToFSensor::ToFSensor(ros::NodeHandle nh)
   sensor_temperature_bl = this->n_.advertise<sensor_msgs::Temperature>("sensor_temperature_bl", pub_queue);
   sensor_temperature_br = this->n_.advertise<sensor_msgs::Temperature>("sensor_temperature_br", pub_queue);
 
-  interface_.reset(new tofcore::Sensor("/dev/ttyACM0"));
-  interface_->stopStream();
+  std::vector<tofcore::device_info_t> devices = tofcore::find_all_devices(std::chrono::seconds(5), std::numeric_limits<int>::max());
+  interface_.reset(new tofcore::Sensor(devices.begin()->connector_uri));
+
+  // interface_->stopStream();
+
   dynamic_reconfigure::Server<tofcore_ros1::tofcoreConfig>::CallbackType f_ = boost::bind(&ToFSensor::on_set_parameters_callback, this, boost::placeholders::_1, boost::placeholders::_2);
-  dynamic_reconfigure::Server<tofcore_ros1::tofcoreConfig> *server_ = new dynamic_reconfigure::Server<tofcore_ros1::tofcoreConfig>(this->config_mutex, this->n_);
+  server_ = new dynamic_reconfigure::Server<tofcore_ros1::tofcoreConfig>(this->config_mutex, this->n_);
   server_->setCallback(f_);
 
-  interface_->getLensInfo(rays_x, rays_y, rays_z);
-  cartesianTransform_.initLensTransform(m_width, HEIGHT, rays_x, rays_y, rays_z);
 
+  try
+  {
+    interface_->getLensInfo(rays_x, rays_y, rays_z);
+    cartesianTransform_.initLensTransform(m_width, HEIGHT, rays_x, rays_y, rays_z);
+  }
+  catch(...)
+  {
+    ROS_FATAL("Error reading lens info from sensor.");
+  }
   // Setup ROS parameters
   tofcore_ros1::tofcoreConfig config;
   server_->getConfigDefault(config);
+  // server_->getConfigMin(this->oldConfig_);
 
   // Get sensor info
   TofComm::versionData_t versionData{};
@@ -128,7 +173,10 @@ ToFSensor::ToFSensor(ros::NodeHandle nh)
   else
     config.integration_time = 500;
 
+  boost::recursive_mutex::scoped_lock lock(this->config_mutex);
   server_->updateConfig(config);
+  on_set_parameters_callback(config, 0);
+  this->oldConfig_ = config;
   // Setup parameter server call back
   (void)interface_->subscribeMeasurement([&](std::shared_ptr<tofcore::Measurement_T> f) -> void
                                          { updateFrame(*f); });
@@ -141,7 +189,7 @@ void ToFSensor::on_set_parameters_callback(tofcore_ros1::tofcoreConfig &config, 
   // Keeping track of the old config items is clunky, but I can't find a better way to determine which of the parameters have changed
   std::vector<std::string> parameters;
   this->n_.getParamNames(parameters);
-
+  config_lock.lock();
   for (const auto &parameter : parameters)
   {
     if (parameter == CAPTURE_MODE && config.capture_mode != this->oldConfig_.capture_mode)
@@ -151,112 +199,141 @@ void ToFSensor::on_set_parameters_callback(tofcore_ros1::tofcoreConfig &config, 
       {
         this->apply_stream_type_param(parameter, config);
       }
+      this->oldConfig_.capture_mode = config.capture_mode;
     }
     else if (parameter == INTEGRATION_TIME && config.integration_time != this->oldConfig_.integration_time)
     {
       this->apply_integration_time_param(parameter, config);
+      this->oldConfig_.integration_time = config.integration_time;
     }
     else if (parameter == STREAMING_STATE && config.streaming != this->oldConfig_.streaming)
     {
       this->apply_streaming_param(parameter, config);
+      this->oldConfig_.streaming = config.streaming;
     }
     else if (parameter == MODULATION_FREQUENCY && config.modulation_frequency != this->oldConfig_.modulation_frequency)
     {
       this->apply_modulation_frequency_param(parameter, config);
+      this->oldConfig_.modulation_frequency = config.modulation_frequency;
     }
     else if (parameter == DISTANCE_OFFSET && config.distance_offset != this->oldConfig_.distance_offset)
     {
       this->apply_distance_offset_param(parameter, config);
+      this->oldConfig_.distance_offset = config.distance_offset;
     }
     else if (parameter == MINIMUM_AMPLITUDE && config.minimum_amplitude != this->oldConfig_.minimum_amplitude)
     {
       this->apply_minimum_amplitude_param(parameter, config);
+      this->oldConfig_.minimum_amplitude = config.minimum_amplitude;
     }
     else if (parameter == MAXIMUM_AMPLITUDE && config.maximum_amplitude != this->oldConfig_.maximum_amplitude)
     {
       int value = config.maximum_amplitude;
       ROS_INFO("Handling parameter \"%s\" : %d", parameter.c_str(), (value));
       this->maximum_amplitude = value;
+      this->oldConfig_.maximum_amplitude = config.maximum_amplitude;
     }
     else if (parameter == FLIP_HORIZONTAL && config.flip_hotizontal != this->oldConfig_.flip_hotizontal)
     {
       this->apply_flip_horizontal_param(parameter, config);
+      this->oldConfig_.flip_hotizontal = config.flip_hotizontal;
     }
     else if (parameter == FLIP_VERITCAL && config.flip_vertical != this->oldConfig_.flip_vertical)
     {
       this->apply_flip_vertical_param(parameter, config);
+      this->oldConfig_.flip_vertical = config.flip_vertical;
     }
     else if (parameter == BINNING && config.binning != this->oldConfig_.binning)
     {
       this->apply_binning_param(parameter, config);
+      this->oldConfig_.binning = config.binning;
     }
     else if (parameter == SENSOR_NAME && config.sensor_name != this->oldConfig_.sensor_name)
     {
       this->apply_sensor_name_param(parameter, config);
+      this->oldConfig_.sensor_name = config.sensor_name;
     }
     else if (parameter == SENSOR_LOCATION && config.sensor_location != this->oldConfig_.sensor_location)
     {
       this->apply_sensor_location_param(parameter, config);
+      this->oldConfig_.sensor_location = config.sensor_location;
     }
     else if (parameter == MEDIAN_FILTER && config.median_filter != this->oldConfig_.median_filter)
     {
       bool value = config.median_filter;
       ROS_INFO("Handling parameter \"%s\" : %s", parameter.c_str(), (value ? "true" : "false"));
       this->median_filter = value;
+      this->oldConfig_.median_filter = config.median_filter;
     }
     else if (parameter == MEDIAN_KERNEL && config.median_kernel != this->oldConfig_.median_kernel)
     {
       int value = config.median_kernel;
       ROS_INFO("Handling parameter \"%s\" : %d", parameter.c_str(), int(value / 2) * 2 + 1);
       this->median_kernel = int(value / 2) * 2 + 1;
+      this->oldConfig_.median_kernel = config.median_kernel;
     }
     else if (parameter == BILATERAL_FILTER && config.bilateral_filter != this->oldConfig_.bilateral_filter)
     {
       bool value = config.bilateral_filter;
       ROS_INFO("Handling parameter \"%s\" : %s", parameter.c_str(), (value ? "true" : "false"));
       this->bilateral_filter = value;
+      this->oldConfig_.bilateral_filter = config.bilateral_filter;
     }
     else if (parameter == BILATERAL_COLOR && config.bilateral_color != this->oldConfig_.bilateral_color)
     {
       int value = config.bilateral_color;
       ROS_INFO("Handling parameter \"%s\" : %d", parameter.c_str(), value);
       this->bilateral_color = value;
+      this->oldConfig_.bilateral_color = config.bilateral_color;
     }
     else if (parameter == BILATERAL_KERNEL && config.bilateral_kernel != this->oldConfig_.bilateral_kernel)
     {
       int value = config.bilateral_kernel;
       ROS_INFO("Handling parameter \"%s\" : %d", parameter.c_str(), int(value / 2) * 2 + 1);
       this->bilateral_kernel = int(value / 2) * 2 + 1;
+      this->oldConfig_.bilateral_kernel = config.bilateral_kernel;
     }
     else if (parameter == BILATERAL_SPACE && config.bilateral_space != this->oldConfig_.bilateral_space)
     {
       int value = config.bilateral_space;
       ROS_INFO("Handling parameter \"%s\" : %d", parameter.c_str(), value);
       this->bilateral_space = value;
+      this->oldConfig_.bilateral_space = config.bilateral_space;
     }
     else if (parameter == GRADIENT_FILTER && config.gradient_filter != this->oldConfig_.gradient_filter)
     {
       bool value = config.gradient_filter;
-      ROS_INFO("Handling parameter \"%s\" : %s", parameter.c_str(),  (value ? "true" : "false"));
+      ROS_INFO("Handling parameter \"%s\" : %s", parameter.c_str(), (value ? "true" : "false"));
       this->gradient_filter = value;
+      this->oldConfig_.gradient_filter = config.gradient_filter;
     }
     else if (parameter == GRADIENT_KERNEL && config.gradient_kernel != this->oldConfig_.gradient_kernel)
     {
       int value = config.gradient_kernel;
       ROS_INFO("Handling parameter \"%s\" : %d", parameter.c_str(), int(value / 2) * 2 + 1);
-      this->gradient_kernel = int(value / 2) * 2 + 1;;
+      this->gradient_kernel = int(value / 2) * 2 + 1;
+      this->oldConfig_.gradient_kernel = config.gradient_kernel;
     }
     else if (parameter == GRADIENT_THRESHOLD && config.gradient_threshold != this->oldConfig_.gradient_threshold)
     {
       int value = config.gradient_threshold;
       ROS_INFO("Handling parameter \"%s\" : %d", parameter.c_str(), value);
       this->gradient_threshold = value;
+      this->oldConfig_.gradient_threshold = config.gradient_threshold;
+    }
+    else if (parameter == GRADIENT_FILTER_SUPPORT && config.gradient_filter_support != this->oldConfig_.gradient_filter_support)
+    {
+      int value = config.gradient_filter_support;
+      ROS_INFO("Handling parameter \"%s\" : %d", parameter.c_str(), value);
+      this->gradient_filter_support = config.gradient_filter_support;
+      this->oldConfig_.gradient_filter_support = config.gradient_filter_support;
     }
     else if (parameter == BILATERAL_SPACE && config.bilateral_space != this->oldConfig_.bilateral_space)
     {
       int value = config.bilateral_space;
       ROS_INFO("Handling parameter \"%s\" : %d", parameter.c_str(), value);
       this->bilateral_space = value;
+      this->oldConfig_.bilateral_space = config.bilateral_space;
     }
     else if (parameter == HDR_ENABLE && config.hdr_enable != this->oldConfig_.hdr_enable)
     {
@@ -264,6 +341,7 @@ void ToFSensor::on_set_parameters_callback(tofcore_ros1::tofcoreConfig &config, 
       ROS_INFO("Handling parameter \"%s\" : %s", parameter.c_str(), (value ? "true" : "false"));
       this->hdr_enable = value;
       this->apply_vsm_param(parameter, config);
+      this->oldConfig_.hdr_enable = config.hdr_enable;
     }
     else if (parameter == HDR_INTEGRATIONS && config.hdr_integrations != this->oldConfig_.hdr_integrations)
     {
@@ -271,6 +349,112 @@ void ToFSensor::on_set_parameters_callback(tofcore_ros1::tofcoreConfig &config, 
       ROS_INFO("Handling parameter \"%s\" : %s", parameter.c_str(), value.c_str());
       this->hdr_integrations = value;
       this->apply_vsm_param(parameter, config);
+      this->oldConfig_.hdr_integrations = config.hdr_integrations;
+    }
+    else if (parameter == AE_ENABLE && config.ae_enable != this->oldConfig_.ae_enable)
+    {
+      bool value = config.ae_enable;
+      ROS_INFO("Handling parameter \"%s\" : %s", parameter.c_str(), (value ? "true" : "false"));
+      this->ae_enable = value;
+      this->oldConfig_.ae_enable = config.ae_enable;
+    }
+    else if (parameter == AE_TARGET_MEAN_AMP && config.ae_target_mean_amp != this->oldConfig_.ae_target_mean_amp)
+    {
+      float value = config.ae_target_mean_amp;
+      ROS_INFO("Handling parameter \"%s\" : %f", parameter.c_str(), value );
+      this->ae_target_mean_amp = value;
+      this->oldConfig_.ae_target_mean_amp = config.ae_target_mean_amp;
+    }
+    else if (parameter == AE_TARGET_EXP_AVG_ALPHA && config.ae_target_exp_avg_alpha != this->oldConfig_.ae_target_exp_avg_alpha)
+    {
+      float value = config.ae_target_exp_avg_alpha;
+      ROS_INFO("Handling parameter \"%s\" : %f", parameter.c_str(), value );
+      this->ae_target_exp_avg_alpha = value;
+      this->oldConfig_.ae_target_exp_avg_alpha = config.ae_target_exp_avg_alpha;
+    }
+    else if (parameter == AE_RC_SPEED_FACTOR && config.ae_rc_speed_factor != this->oldConfig_.ae_rc_speed_factor)
+    {
+      float value = config.ae_rc_speed_factor;
+      ROS_INFO("Handling parameter \"%s\" : %f", parameter.c_str(), value );
+      this->ae_rc_speed_factor = value;
+      this->oldConfig_.ae_rc_speed_factor = config.ae_rc_speed_factor;
+    }
+    else if (parameter == AE_RC_SPEED_FACTOR_FAST && config.ae_rc_speed_factor_fast != this->oldConfig_.ae_rc_speed_factor_fast)
+    {
+      float value = config.ae_rc_speed_factor_fast;
+      ROS_INFO("Handling parameter \"%s\" : %f", parameter.c_str(), value );
+      this->ae_rc_speed_factor_fast = value;
+      this->oldConfig_.ae_rc_speed_factor_fast = config.ae_rc_speed_factor_fast;
+    }
+    else if (parameter == AE_RC_REL_ERROR_THRESH && config.ae_rc_rel_error_thresh != this->oldConfig_.ae_rc_rel_error_thresh)
+    {
+      float value = config.ae_rc_rel_error_thresh;
+      ROS_INFO("Handling parameter \"%s\" : %f", parameter.c_str(), value );
+      this->ae_rc_rel_error_thresh = value;
+      this->oldConfig_.ae_rc_rel_error_thresh = config.ae_rc_rel_error_thresh;
+    }
+    else if (parameter == AE_RC_MIN_AMP && config.ae_rc_min_amp != this->oldConfig_.ae_rc_min_amp)
+    {
+      int value = config.ae_rc_min_amp;
+      ROS_INFO("Handling parameter \"%s\" : %d", parameter.c_str(), value);
+      this->ae_rc_min_amp = value;
+      this->oldConfig_.ae_rc_min_amp = config.ae_rc_min_amp;
+    }
+    else if (parameter == AE_DEADBAND_THRESH && config.ae_deadband_thresh != this->oldConfig_.ae_deadband_thresh)
+    {
+      int value = config.ae_deadband_thresh;
+      ROS_INFO("Handling parameter \"%s\" : %d", parameter.c_str(), value);
+      this->ae_deadband_thresh = value;
+      this->oldConfig_.ae_deadband_thresh = config.ae_deadband_thresh;
+    }
+    else if (parameter == AE_RC_APPLY_MIN_REFLECT_THRESH && config.ae_rc_apply_min_reflect_thresh != this->oldConfig_.ae_rc_apply_min_reflect_thresh)
+    {
+      bool value = config.ae_rc_apply_min_reflect_thresh;
+      ROS_INFO("Handling parameter \"%s\" : %s", parameter.c_str(), (value ? "true" : "false"));
+      this->ae_rc_apply_min_reflect_thresh = value;
+      this->oldConfig_.ae_rc_apply_min_reflect_thresh = config.ae_rc_apply_min_reflect_thresh;
+    }
+    else if (parameter == AE_MIN_INTEGRATION_TIME_US && config.ae_min_integration_time_us != this->oldConfig_.ae_min_integration_time_us)
+    {
+      int value = config.ae_min_integration_time_us;
+      ROS_INFO("Handling parameter \"%s\" : %d", parameter.c_str(), value);
+      this->ae_min_integration_time_us = value;
+      this->oldConfig_.ae_min_integration_time_us = config.ae_min_integration_time_us;
+    }
+    else if (parameter == AE_MAX_INTEGRATION_TIME_US && config.ae_max_integration_time_us != this->oldConfig_.ae_max_integration_time_us)
+    {
+      int value = config.ae_max_integration_time_us;
+      ROS_INFO("Handling parameter \"%s\" : %d", parameter.c_str(), value);
+      this->ae_max_integration_time_us = value;
+      this->oldConfig_.ae_max_integration_time_us = config.ae_max_integration_time_us;
+    }
+    else if (parameter == AE_ROI_X && config.ae_roi_x != this->oldConfig_.ae_roi_x)
+    {
+      int value = config.ae_roi_x;
+      ROS_INFO("Handling parameter \"%s\" : %d", parameter.c_str(), value);
+      this->ae_roi_x = value;
+      this->oldConfig_.ae_roi_x = config.ae_roi_x;
+    }
+    else if (parameter == AE_ROI_Y && config.ae_roi_y != this->oldConfig_.ae_roi_y)
+    {
+      int value = config.ae_roi_y;
+      ROS_INFO("Handling parameter \"%s\" : %d", parameter.c_str(), value);
+      this->ae_roi_y = value;
+      this->oldConfig_.ae_roi_y = config.ae_roi_y;
+    }
+    else if (parameter == AE_ROI_WIDTH && config.ae_roi_width != this->oldConfig_.ae_roi_width)
+    {
+      int value = config.ae_roi_width;
+      ROS_INFO("Handling parameter \"%s\" : %d", parameter.c_str(), value);
+      this->ae_roi_width = value;
+      this->oldConfig_.ae_roi_width = config.ae_roi_width;
+    }
+    else if (parameter == AE_ROI_HEIGHT && config.ae_roi_height != this->oldConfig_.ae_roi_height)
+    {
+      int value = config.ae_roi_height;
+      ROS_INFO("Handling parameter \"%s\" : %d", parameter.c_str(), value);
+      this->ae_roi_height = value;
+      this->oldConfig_.ae_roi_height = config.ae_roi_height;
     }
     // else if (parameter == TEMPORAL_FILTER && config.temporal_filter != this->oldConfig_.temporal_filter)
     // {
@@ -285,7 +469,9 @@ void ToFSensor::on_set_parameters_callback(tofcore_ros1::tofcoreConfig &config, 
     //   this->temporal_alpha = value;
     // }
   }
-  this->oldConfig_ = config;
+  // boost::recursive_mutex::scoped_lock lock(this->config_mutex);
+  // server_->updateConfig(this->oldConfig_);
+  config_lock.unlock();
 }
 
 void ToFSensor::apply_stream_type_param(const std::string &parameter, tofcore_ros1::tofcoreConfig &config)
@@ -313,6 +499,7 @@ void ToFSensor::apply_stream_type_param(const std::string &parameter, tofcore_ro
   {
     ROS_ERROR("Unknown stream type: %s", value.c_str());
   }
+  std::this_thread::sleep_for(std::chrono::seconds(1));
 }
 
 void ToFSensor::apply_integration_time_param(const std::string &parameter, tofcore_ros1::tofcoreConfig &config)
@@ -424,7 +611,7 @@ void ToFSensor::apply_sensor_location_param(const std::string &parameter, tofcor
 void ToFSensor::apply_vsm_param(const std::string &parameter, tofcore_ros1::tofcoreConfig &config)
 {
   auto value = config.hdr_enable;
-
+  this->hdr_enable = value;
   ROS_INFO("Handling parameter \"%s\" : %s", parameter.c_str(), (value ? "true" : "false"));
 
   std::vector<std::string> integration_times;
@@ -582,14 +769,19 @@ void ToFSensor::publish_pointCloud(const tofcore::Measurement_T &frame, ros::Pub
 
   // Adding this to the message for the auto exposure node
   // Need to check if it exists because this is optional value
+  int integration_time = 500;
   if (frame.integration_time())
   {
-    auto integration_time = *std::move(frame.integration_time());
+    integration_time = *std::move(frame.integration_time());
     cloud_msg.integration_time = integration_time;
   }
 
   cv::Mat dist_frame = cv::Mat(frame.height(), frame.width(), CV_16UC1, (void *)frame.distance().begin());
-
+  if (this->ae_enable)
+  {
+    cv::Mat amp_frame = cv::Mat(frame.height(), frame.width(), CV_16UC1, (void *)frame.amplitude().begin());
+    process_ae(integration_time, amp_frame, 0.01);
+  }
   if (this->median_filter)
   {
     cv::medianBlur(dist_frame, dist_frame, this->median_kernel);
@@ -607,17 +799,29 @@ void ToFSensor::publish_pointCloud(const tofcore::Measurement_T &frame, ros::Pub
   }
   if (this->gradient_filter)
   {
+    // apply gradient filtering to cloud
     cv::Mat grad_x, grad_y;
     cv::Mat dst = cv::Mat::zeros(dist_frame.size(), CV_32FC1);
     dist_frame.convertTo(dst, CV_32FC1);
-    cv::Sobel(dst, grad_x, CV_64FC1, 1, 0, 2 * this->gradient_kernel + 1);
-    cv::Sobel(dst, grad_y, CV_64FC1, 0, 1, 2 * this->gradient_kernel + 1);
-    cv::Mat gradient_magnitude;
-    cv::magnitude(grad_x, grad_y, gradient_magnitude);
-    cv::Mat grad_mask = gradient_magnitude > this->gradient_threshold;
-    dist_frame.setTo(cv::Scalar(0), grad_mask);
+
+    // Compute the Laplacian
+    cv::Mat laplacian;
+    cv::Laplacian(dist_frame, laplacian, CV_64F);
+
+    // Calculate the magnitude of the gradient
+    cv::Mat laplacian_abs;
+    cv::Mat grad_mask = cv::abs(laplacian) > this->gradient_threshold;
+
+    cv::Mat mask_valid;
+    cv::bitwise_not(grad_mask, mask_valid);
+
+    // ensure enough neighbours of each pixel satisfy the gradient condition
+    mask_valid = neighbour_mask(mask_valid, this->gradient_filter_support);
+    cv::Mat mask;
+    cv::bitwise_not(mask_valid, mask);
+    dist_frame.setTo(cv::Scalar(0), mask);
   }
-  
+
   sensor_msgs::PointCloud2Modifier modifier(cloud_msg.point_cloud);
   modifier.resize(frame.height() * frame.width());
   modifier.setPointCloud2Fields(
@@ -865,7 +1069,7 @@ void ToFSensor::publish_pointCloudHDR(const tofcore::Measurement_T &frame, ros::
     ++count;
     it_d += 1;
   }
-  // This is dumb and redundant but I don't want to break rviz viewer
+  // This is redundant but I don't want to break rviz viewer
   pub.publish(cloud_msg.point_cloud);
   cust_pub.publish(cloud_msg);
 
@@ -938,7 +1142,6 @@ void ToFSensor::publish_DCSData(const tofcore::Measurement_T &frame, const ros::
 
 void ToFSensor::updateFrame(const tofcore::Measurement_T &frame)
 {
-  // ROS_INFO("Updating Frame ");
   auto stamp = ros::Time::now();
   switch (frame.type())
   {
@@ -956,6 +1159,7 @@ void ToFSensor::updateFrame(const tofcore::Measurement_T &frame)
   }
   case tofcore::Measurement_T::DataType::DISTANCE_AMPLITUDE:
   {
+
     if (this->hdr_enable)
     {
 
@@ -973,6 +1177,7 @@ void ToFSensor::updateFrame(const tofcore::Measurement_T &frame)
     }
     else
     {
+
       publish_amplData(frame, pub_amplitude_, stamp);
       publish_distData(frame, pub_distance_, stamp);
       publish_pointCloud(frame, pub_pcd_, pub_cust_pcd_, stamp);
@@ -1007,4 +1212,124 @@ void ToFSensor::updateFrame(const tofcore::Measurement_T &frame)
     break;
   }
   }
+}
+void ToFSensor::process_ae(short unsigned int integration_time_us, cv::Mat &ampimg, float timestep = .01)
+{
+  // === calculate new integration time
+
+  // calculate mean amplitude
+  float amp_measure_mean = measure_from_avg(ampimg, integration_time_us);
+  int new_integration = control_recursive(integration_time_us, amp_measure_mean);
+
+  if (abs(new_integration - integration_time_us) > this->ae_deadband_thresh)
+  {
+
+    this->ae_integrations.put(new_integration);
+    // on_set_parameters_callback(config, 0);
+    // interface_->setIntegrationTime(new_integration);
+  }
+}
+
+float ToFSensor::measure_from_avg(cv::Mat ampimg, int int_us)
+{
+  cv::Scalar amp_measure;
+  cv::Rect roi(this->ae_roi_x, this->ae_roi_y, this->ae_roi_width , this->ae_roi_height); // x,y,width,height
+  cv::Mat amp_roi ;
+  try
+  {
+    amp_roi = ampimg(roi);
+  }
+  catch (cv::Exception &excep)
+  {
+    ROS_INFO("Invalid ROI parameters, using entire image");
+    ROS_INFO("%s", excep.what());
+    amp_roi = ampimg;
+  }
+  if (this->ae_rc_apply_min_reflect_thresh)
+  {
+    // apply min reflectifivity thresholding to amplitude image
+    // intent is to ignore pixels that are so dark even at max integration time we wouldn't use them;
+
+    // compute the minimum amplitude assuming the maximum integration time is used
+    float min_amp = this->ae_rc_min_amp * int_us / this->ae_max_integration_time_us;
+
+    // find 'bright enough' pixels in the roi
+    amp_measure = cv::mean(amp_roi, amp_roi > min_amp);
+  }
+  else
+  {
+    amp_measure = cv::mean(amp_roi);
+  }
+
+  double amp_measure_d = amp_measure[0];
+  if (amp_measure_d == 0)
+  {
+    return 0;
+  }
+
+  float alpha = this->ae_target_exp_avg_alpha;
+  this->amp_measure_mean = alpha * this->amp_measure_mean + (1 - alpha) * amp_measure_d;
+
+  return this->amp_measure_mean;
+}
+float ToFSensor::obtain_error(float amp_measure_max, float amp_measure_mean, int int_us)
+{
+
+  float error = this->ae_target_mean_amp - this->amp_measure_mean;
+
+  return error;
+}
+
+int ToFSensor::control_recursive(int integration_time_us, float amp_measure_mean)
+{
+
+  // === determine error
+  float error = obtain_error(amp_measure_max, amp_measure_mean, integration_time_us);
+
+  float rel_error = error / std::max((double)amp_measure_mean, 1e-10);
+  float k;
+  if (abs(rel_error) > this->ae_rc_rel_error_thresh)
+  {
+    k = this->ae_rc_speed_factor_fast;
+  }
+  else
+  {
+    k = this->ae_rc_speed_factor;
+  }
+
+  // === update
+  int new_integration_time = integration_time_us * (1 + k * rel_error);
+
+  // === bound the integration time
+  int itmin = this->ae_min_integration_time_us;
+  int itmax = this->ae_max_integration_time_us;
+  new_integration_time = std::max(itmin, std::min(itmax, new_integration_time));
+  return int(new_integration_time);
+}
+
+float ToFSensor::measured_error()
+{
+  return this->error_measure;
+}
+void ToFSensor::ae_watchdog()
+{
+  while (true)
+  {
+    int new_integration;
+    this->ae_integrations.take(new_integration);
+    ROS_INFO("Automatic Exposure setting integration time to: %d",new_integration );
+
+    config_lock.lock();
+    tofcore_ros1::tofcoreConfig config = this->oldConfig_;
+    config.integration_time = new_integration;
+    interface_->setIntegrationTime(new_integration);
+    config_lock.unlock();
+
+    //boost::recursive_mutex::scoped_lock lock(this->config_mutex);
+    //server_->updateConfig(config);
+  }
+}
+std::thread ToFSensor::spawn_ae_update()
+{
+  return std::thread(&ToFSensor::ae_watchdog, this);
 }

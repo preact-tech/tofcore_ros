@@ -24,29 +24,8 @@ make ros1
 
 One run the node by running the following commands: 
 
-Terminal 1:
 ```
 cd ros1
 source ./install/setup.bash
-roscore
-```
-Terminal 2:
-```
-cd ros1
-source ./install/setup.bash
-rosrun rqt_reconfigure rqt_reconfigure
-```
-Terminal 3:
-
-Default rviz config file located at ros1/rviz/default_config.rviz
-```
-cd ros1
-source ./install/setup.bash
-rosrun rviz rviz
-```
-Terminal 4:
-```
-cd ros1
-source ./install/setup.bash
-rosrun tofcore_ros1 tof_sensor
+roslaunch ros1/tofcore_ros/launch/tofcore.launch 
 ```
