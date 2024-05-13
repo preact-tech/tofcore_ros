@@ -8,9 +8,6 @@ pipeline {
     environment {
         //Use our build number generator web service to create a unique build number.
         UNIQUE_BUILD_NUMBER = sh(script: "curl --silent 'http://jenkins.preact.net:51212/libtofcore'", , returnStdout: true)
-        //Force the CPP check health checks to on.
-        PREACT_CPPCHECK_ENABLE = "ON"
-        PREACT_CPPCHECK_CHECKS = "all"
     }
 
     stages {
@@ -19,6 +16,11 @@ pipeline {
                 bitbucketStatusNotify ( buildState: 'INPROGRESS' )
                 script {
                     currentBuild.displayName = "#" + env.UNIQUE_BUILD_NUMBER
+
+                    // Pull arm64 docker image.. agent doesn't seem to support pull args to specify platform
+                    docker.withRegistry("https://940956394783.dkr.ecr.us-west-2.amazonaws.com", "ecr:us-west-2:AWS-ECR-Build-Pipeline-FleetEdge") {
+                        sh 'docker pull --platform linux/arm64 940956394783.dkr.ecr.us-west-2.amazonaws.com/orin-dev:0.1'
+                    }
                 }
             }
         }
@@ -39,48 +41,102 @@ pipeline {
                     }
                     steps {
                         sh '''
-                            cmake -B build-linux -DCMAKE_INSTALL_PREFIX=dist/linux
-                            make -C build-linux VERBOSE=1 -j\$(nproc) install
-                            
-                            # package library
+                            mkdir -p dist/linux/internal
+                            mkdir -p dist/linux/external
 
-                            ## prevents tofcrust header files from being packaged
+                            # Build and package tofcrust (internal)
+                            cmake -B build-linux
+                            make -C build-linux VERBOSE=1 -j\$(nproc)
+                            cd build-linux
+                            cpack
+                            cd ../
+                            cp build-linux/*.deb dist/linux/internal
+
+                            # Build and package tofcore (external)
                             cd tofcore
-                            cmake -B build-linux -DCMAKE_INSTALL_PREFIX=dist/linux
-                            make -C build-linux VERBOSE=1 -j\$(nproc) install
-
+                            cmake -B build-linux
+                            make -C build-linux VERBOSE=1 -j\$(nproc)
                             cd build-linux
                             cpack
                             cd ../..
-                            cp tofcore/build-linux/*.deb dist/linux
+                            cp tofcore/build-linux/*.deb dist/linux/external
 
                             # needed for python wheels
                             cp build-linux/tofcore/wrappers/python/*.so tofcore/wrappers/python/pytofcore
                             cp build-linux/tofcrust/wrappers/python/*.so tofcrust/wrappers/python/pytofcrust
                             cp build-linux/tofcore/wrappers/python/*.so tofcrust/wrappers/python/pytofcrust
                             
-                            cp build-linux/tofcrust/cppcheck.xml dist/cppcheck_tofcrust.xml
-                            cp build-linux/tofcore/cppcheck.xml dist/cppcheck_tofcore.xml
-                            
                             # Build python wheels
                             export CMAKE_BUILD_PARALLEL_LEVEL=$(nproc)
                             cp tofcore/wrappers/python/setup.py .
                             cp -r tofcore/wrappers/python/pytofcore .
-                            python3 setup.py bdist_wheel -d ./dist/linux
+                            python3 setup.py bdist_wheel -d ./dist/linux/external
 
                             cp tofcrust/wrappers/python/setup.py ./setup_tofcrust.py
                             cp -r tofcrust/wrappers/python/pytofcrust .
-                            python3 setup_tofcrust.py bdist_wheel -d ./dist/linux
+                            python3 setup_tofcrust.py bdist_wheel -d ./dist/linux/internal
                             '''
                     }
                     post {
                         always {
-                            script {
-                                def coreIssues = scanForIssues tool: cppCheck(pattern: 'dist/cppcheck_tofcore.xml')
-                                def crustIssues = scanForIssues tool: cppCheck(pattern: 'dist/cppcheck_tofcrust.xml')
-                                publishIssues issues:[coreIssues,crustIssues]
-                            }
+                            archiveArtifacts allowEmptyArchive: true, artifacts: 'dist/**,', followSymlinks: false
 
+                            // Push artifacts to s3
+                            script {
+                                String localPath = 'dist'
+                                String bucketName = 'preact-data'
+                                String s3Path
+                                if (env.BRANCH_NAME == 'develop') {
+                                    s3Path = "sw/oasis/utilities/dev/${env.UNIQUE_BUILD_NUMBER}"
+                                } else if (env.BRANCH_NAME.startsWith('release/')) {
+                                    s3Path = "sw/oasis/utilities/staging/${env.UNIQUE_BUILD_NUMBER}"
+                                }
+                                S3Utils.upload(this, localPath, bucketName, s3Path, [disableBadge: true, disableSummary: true])
+                            }
+                        }
+                        cleanup {
+                            cleanWs()
+                        }
+                    }
+                }
+
+                stage('Linux ARM64 Build') {
+                    agent {
+                        docker {
+                            image 'orin-dev:0.1'
+                            registryUrl 'https://940956394783.dkr.ecr.us-west-2.amazonaws.com'
+                            registryCredentialsId 'ecr:us-west-2:AWS-ECR-Build-Pipeline-FleetEdge'
+                            //Setup special cmdline args to docker
+                            // - Don't use our development entrypoint script, this allows jenkins UID to be used. 
+                            // - Mount [/etc/passwd|shaddow]so that the jenkins UID can be associated with the jenkins user.
+                            args '--platform=linux/arm64 --entrypoint="" -v /etc/passwd:/etc/passwd -v /etc/shadow:/etc/shadow'
+                        }
+                    }
+                    steps {
+                        sh '''
+                            mkdir -p dist/linux-arm64/internal
+                            mkdir -p dist/linux-arm64/external
+
+                            # Build and package tofcrust (internal)
+                            cmake -B build-linux-arm64
+                            make -C build-linux-arm64 VERBOSE=1 -j\$(nproc)
+                            cd build-linux-arm64
+                            cpack
+                            cd ../
+                            cp build-linux-arm64/*.deb dist/linux-arm64/internal
+
+                            # Build and package tofcore (external)
+                            cd tofcore
+                            cmake -B build-linux-arm64
+                            make -C build-linux-arm64 VERBOSE=1 -j\$(nproc)
+                            cd build-linux-arm64
+                            cpack
+                            cd ../..
+                            cp tofcore/build-linux-arm64/*.deb dist/linux-arm64/external
+                        '''
+                    }
+                    post {
+                        always {
                             archiveArtifacts allowEmptyArchive: true, artifacts: 'dist/**,', followSymlinks: false
 
                             // Push artifacts to s3
@@ -106,10 +162,10 @@ pipeline {
                     agent {
                         docker {
                             alwaysPull true
-                            image 'oasis-win-dev:1.0.64-ltsc2019'
+                            image 'oasis-win-dev:1.0.64-ltsc2022'
                             registryUrl 'https://582077591549.dkr.ecr.us-west-2.amazonaws.com'
                             registryCredentialsId 'ecr:us-west-2:AWS-ECR-Build-Pipeline'
-                            label 'windows-desktop-10'
+                            label 'windows-server-2022'
                         }
                     }
                     steps {

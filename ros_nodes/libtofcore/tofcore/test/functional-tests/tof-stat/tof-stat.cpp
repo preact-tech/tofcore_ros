@@ -90,6 +90,7 @@ int main(int argc, char *argv[])
         {
             std::cerr << "Failed to retrieve static sensor data" << std::endl;
         }
+
         /*
          * Persistent Sensor Settings
          */
@@ -101,6 +102,15 @@ int main(int argc, char *argv[])
         else
         {
             std::cerr << "Failed to read sensor settings" << std::endl;
+        }
+        std::optional<uint8_t> binningSetting = sensor.getBinning();
+        if(binningSetting.has_value())
+        {
+            std::cout << "Binning: " << static_cast<unsigned>(binningSetting.value()) << std::endl;
+        }
+        else
+        {
+            std::cout << "Failed to get binning setting!" << std::endl;
         }
         /*
          * Set sensor name/location

@@ -78,7 +78,8 @@ public:
         AMPLITUDE = 2,
         GRAYSCALE = 3,
         DCS = 4,
-        AMBIENT = 5
+        AMBIENT = 5,
+        DCS_DIFF_AMBIENT = 6
     };
 
     virtual ~Measurement_T() = default;
@@ -86,11 +87,18 @@ public:
     /// @brief Obtain a view (in raw bytes) of the pixel_buffer for the measurement
     virtual BufferView<byte_t> pixel_buffer() const = 0;
 
-    /// @brief Obtain a view of one of the dcs frames from a DCS mesaurement
+    /// @brief Obtain a view of one of the dcs frames from a DCS measurement
     /// @param dcs_index index of DCS frame to return 0-3
     /// @return view of requested DCS frame data
     /// @return empty view if index out of range or not a DCS measurement
     virtual BufferView<int16_t> dcs(int dcs_index) const = 0;
+
+    /// @brief Obtain a view of one of either the (DCS2-DCS0)
+    ///        or (DCS3-DCS1) frames from a DCS Diff + Ambient measurement
+    /// @param index 0 for (DCS2-DCS0), 1 for (DCS3-DCS1)
+    /// @return view of requested frame data
+    /// @return empty view if index out of range or not a DCS Diff + Ambient measurement
+    virtual BufferView<int16_t> dcs_diff(int index) const = 0;
 
     /// @brief Obtain a view of the distance data from a distance measurement
     /// @return view of distance data
@@ -102,7 +110,8 @@ public:
     /// @return empty view if not a amplitude measurement
     virtual BufferView<uint16_t> amplitude() const = 0;
 
-    /// @brief Obtain a view of the grayscale (ambient) data from a grayscale measurement
+    /// @brief Obtain a view of the grayscale (ambient) data from a grayscale
+    ///        measurement or from a DCS Diff + Ambient measurement
     /// @return view of grayscale data
     /// @return empty view if not a grayscale measurement
     virtual BufferView<int16_t> ambient() const = 0;
@@ -190,6 +199,12 @@ public:
     ///
     /// If the VSM information data was not included with this measurement then std::nullopt is returned
     virtual std::optional<TofComm::VsmControl_T> vsm_info() const = 0;
+
+    /// @brief Get the frame timestamp that was recorded at the time of the measurement.
+    /// The timestamp is recorded from the system millisecond timer.
+    ///
+    /// If the timestamp was not included with this measurement then std::nullopt is returned
+    virtual std::optional<uint32_t> frame_timestamp() const = 0;
 };
 
 

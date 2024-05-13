@@ -159,4 +159,16 @@ std::optional<TofComm::VsmControl_T> decode_vsm_info(const KLVDecoder& klv)
     return {vsmControl};
 }
 
+std::optional<uint32_t> decode_frame_timestamp(const KLVDecoder& klv)
+{
+    auto data = klv.find(TofComm::KLV_FRAME_TIMESTAMP_KEY);
+    if(data.first == data.second)
+    {
+        return std::nullopt;
+    }
+
+    uint32_t value { 0 };
+    TofComm::BE_Get(value, data.first);
+    return {value};
+}
 }

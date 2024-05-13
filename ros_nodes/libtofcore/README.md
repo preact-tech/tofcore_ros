@@ -9,6 +9,10 @@ _Why tofcrust? because it's a crusty wrapper round the core ;-P (you can thank L
 
 # Quick start
 
+The easiest method to ensure all the needed tools of the correct versions are 
+present is to use the oasis-dev Docker container.
+
+## Rolling your own environment
 Requirements: 
 
 - CMake v3.16
@@ -27,37 +31,22 @@ Create new udev rules file for usb. Example: etc/udev/rules.d/99-usb-rules.rules
 ```SUBSYSTEMS=="usb", ATTRS{idVendor}=="35FA", ATTRS{idProduct}=="0D0F", MODE:="0666"
 ```
 
-Normal build and install of library:
+## Normal build and install of library:
 
 ```bash
-cmake -Bbuild
-cmake --build build
+make build
 ```
-
-Normal installation (for library only)
-
-```bash
-sudo cmake --build build -- install  # Installs to /usr/local on UNIX systems
-```
-
-_See [CMake documentaion](https://cmake.org/cmake/help/latest/variable/CMAKE_INSTALL_PREFIX.html) on default install location and how to change it._
 
 ## Python Bindings installation
 
 To install the python package into your personal python site-packages directory:
 
 ```
-make python_wrappers
+make pytofcore
+make pytofcrust
 ```
 
-_note: installing pytofcrust will install both packages because pytofcrust depends on pytofcore._
-
-
-
 # Testing
-NOTE: For tests to run successfully python needs to know where to find the .so module files.
-Either install the module(s) as described above or add the build location for the .so file(s) to the PYTHONPATH
-environment variable. 
 
 To run unit tests verifying behavior when no camera is connected, use the following commnad from
 project's root directory: 
@@ -65,7 +54,16 @@ project's root directory:
 python3 -m pytest -m "not functional and not sdram_selftest" -v .
 ```
 
-Functional tests with a camera connected to PC can be executed with the following command 
+Functional tests with a camera connected to PC can be executed with the following commands:
+
+For variants without ethernet capabilities
+
+```
+python3 -m pytest -m "functional" -k "not test_ip_measurement_endpoint" -v .
+```
+
+For variants with ethernet
+
 ```
 python3 -m pytest -m "functional" -v .
 ```

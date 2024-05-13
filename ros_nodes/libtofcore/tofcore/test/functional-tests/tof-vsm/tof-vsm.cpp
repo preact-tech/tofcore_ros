@@ -28,6 +28,7 @@ static uint16_t integrationUsIncrement { 0 };
 static uint16_t mfKhzStart { 0 };
 static uint16_t mfKhzIncrement { 0 };
 static int32_t numElements { -1 };
+static bool enableHdr {false};
 
 
 static void parseArgs(int argc, char *argv[])
@@ -59,6 +60,7 @@ static void parseArgs(int argc, char *argv[])
         ("integrationUsIncrement,j", po::value<uint16_t>(&integrationUsIncrement), "Integration time increment")
         ("mfKhzStart,f", po::value<uint16_t>(&mfKhzStart), "Starting modulation frequency value")
         ("mfKhzIncrement,m", po::value<uint16_t>(&mfKhzIncrement), "Modulation frequency increment")
+        ("enable-hdr,e", po::value<bool>(&enableHdr), "Enable or disable HDR.")
         ;
 
     po::variables_map vm;
@@ -115,6 +117,17 @@ int main(int argc, char *argv[])
             std::cout << "Skipping setting of VSM since -n argument not used" << std::endl;
         }
 
+        if(enableHdr)
+        {
+            std::cout << "Enabling Temporal HDR." << std::endl;
+            sensor.setHdr(true);
+        }
+        else
+        {
+            std::cout << "Disabling Temporal HDR." << std::endl;
+            sensor.setHdr(false);
+        }
+
         auto result = sensor.getVsmSettings();
 
         if (result)
@@ -133,6 +146,20 @@ int main(int argc, char *argv[])
         else
         {
             std::cout << "FAILED read VSM settings" << std::endl;
+        }
+
+        std::cout << std::endl;
+        auto hdrSettings = sensor.getHdrSettings();
+        if(hdrSettings)
+        {
+            const HdrSettings_T& settings = *hdrSettings;
+            std::cout << "HDR Settings" << std::endl;
+            std::cout << "Enabled: " << (settings.enabled ? "True" : "False") << std::endl;
+            std::cout << "Mode: " << (settings.mode==HdrMode_e::SPATIAL ? "Spatial" : "Temporal") << std::endl;
+        }
+        else
+        {
+            std::cout << "FAILED read HDR settings" << std::endl;
         }
 
     } // when scope is exited, sensor connection is cleaned up

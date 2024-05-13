@@ -5,6 +5,7 @@
  *
  * Implements API for libtofcore
  */
+#include "CommandTypes.hpp"
 #include "tof_sensor.hpp"
 #include "connection.hpp"
 #include "comm_serial/serial_connection.hpp"
@@ -13,13 +14,16 @@
 #include "TofCommand_IF.hpp"
 #include "TofEndian.hpp"
 #include "Measurement_T.hpp"
-#include "CommandTypes.hpp"
-
 #include <boost/endian/conversion.hpp>
 #include <boost/scope_exit.hpp>
 #include <iostream>
 #include <mutex>
 #include <thread>
+
+#if !defined(PACK_START)
+#define PACK_START __pragma( pack(push, 1) )
+#define PACK_END __pragma( pack(pop))
+#endif
 
 namespace tofcore {
 
@@ -81,9 +85,10 @@ struct Sensor::Impl
         }
         else
         {
-            //TODO Consider changing this to send_receive() so we can really know if it succeeds.
-            this->connection->send(this->measurement_command_, &TofComm::CONTINUOUS_MEASUREMENT, sizeof(TofComm::CONTINUOUS_MEASUREMENT));
-            return true;
+            return this->connection->send_receive(this->measurement_command_,
+                                                  &TofComm::CONTINUOUS_MEASUREMENT,
+                                                  sizeof(TofComm::CONTINUOUS_MEASUREMENT),
+                                                  std::chrono::seconds(5)).has_value();
         }
     }
 
@@ -174,22 +179,280 @@ Sensor::~Sensor()
     pimpl->serverThread_.join();
 }
 
-std::optional<uint16_t> Sensor::getIntegrationTime()
+std::optional<uint32_t> Sensor::getFramePeriodMs()
 {
-    auto result = this->send_receive(COMMAND_GET_INT_TIMES);
+    auto result = this->send_receive(COMMAND_GET_FRAME_PERIOD_MS);
 
-    if (!result)
+    if (!result || (result->size() != sizeof(uint32_t)))
     {
         return std::nullopt;
     }
     const auto &payload = *result;
-    const auto payloadSize = payload.size();
-    uint16_t integrationTime { 0 };
-    if (payloadSize == sizeof(uint16_t))
+    uint32_t framePeriodMs { 0 };
+    BE_Get(framePeriodMs, &payload[0]);
+    return { framePeriodMs };
+}
+
+std::optional<std::tuple<uint32_t, uint32_t, uint32_t>> Sensor::getFramePeriodMsAndLimits()
+{
+    auto result = this->send_receive(COMMAND_GET_FRAME_PERIOD_LIMITS);
+
+    if (!result || (result->size() != (4 * sizeof(uint32_t)))) // NOTE: 4th piece of data (step size) is ignored (always 1)
     {
-        BE_Get(integrationTime, &payload[0]);
+        return std::nullopt;
     }
+    const auto &payload = *result;
+    uint32_t framePeriodMs { 0 };
+    uint32_t framePeriodMsMin { 0 };
+    uint32_t framePeriodMsMax { 0 };
+    BE_Get(framePeriodMs, &payload[0]);
+    BE_Get(framePeriodMsMin, &payload[sizeof(uint32_t)]);
+    BE_Get(framePeriodMsMax, &payload[2 * sizeof(uint32_t)]);
+
+    return std::make_optional(std::tuple(framePeriodMs, framePeriodMsMin, framePeriodMsMax));
+}
+
+std::optional<TofComm::ImuScaledData_T> Sensor::getImuInfo()
+{
+    /* This is the structure of the data bytes from the sensor.
+     * It isn't identical to the oasis definition because this
+     * included the data identification byte. */
+    PACK_START struct ImuData_T
+    {
+        int8_t idByte;
+        std::array<int16_t, 3> accel { 0, 0, 0 };
+        int8_t accelRange {0};  
+        std::array<int16_t, 3> gyro { 0, 0, 0 }; 
+        int8_t gyroRange {0};  
+        int16_t temperature { 0 };
+        uint16_t temperatureScaling {0};  
+        uint32_t timestamp;
+    }PACK_END ;
+
+    constexpr std::size_t IMU_DATA_SIZE_BYTES {sizeof(ImuData_T)};
+
+    TofComm::ImuScaledData_T scaledData;
+    int16_t data;
+    int32_t data32;
+
+    auto result = this->send_receive(COMMAND_READ_IMU_INFO);
+    const auto &payload = *result;
+
+    if (!result || (result->size() != IMU_DATA_SIZE_BYTES))
+    {
+        return std::nullopt;
+    }
+
+    // Lambda to convert raw accelerometer value to scaled value of milli-g.
+    auto scaleAccel = [&] (int16_t data, int8_t scale) -> int16_t
+    {
+        float counts {32768};
+        float conversion {1};
+
+        switch(scale)
+        {
+            case 0:
+                // 2g scale
+                conversion = 2./counts;
+                break;
+            case 1:
+                // 4g scale
+                conversion = 4./counts;
+                break;
+            case 2:
+                // 8g scale
+                conversion = 8./counts;
+                break;
+            case 3:
+                // 16g scale
+                conversion = 16./counts;
+                break;
+        }
+
+        // Convert from the raw value and scaled it to milli-g.
+        float converted = (data * conversion) * 1000;
+       
+        // Take floating point and convert it to an integer.
+        return (static_cast<int16_t>(converted));
+    };
+
+    int8_t accelometerRange = static_cast<int8_t>(payload[offsetof(ImuData_T, accelRange)]);
+
+    for (int i = 0, payloadIndex = offsetof(ImuData_T, accel); i < 3; i++, payloadIndex += 2 )
+    {
+        BE_Get(data, &payload[payloadIndex]);
+        scaledData.accelerometer_millig[i] = scaleAccel(data, accelometerRange); 
+    }
+
+    // Lambda to convert raw gyro value to scaled value of milli-degrees/second.
+    auto scaleGyro = [&] (int16_t data, int8_t scale) -> int16_t
+    {
+        auto counts {32768};
+        float conversion {1};
+
+        switch(scale)
+        {
+            case 0:
+                // 2000 deg/sec
+                conversion = 2000./counts;
+                break;
+            case 1:
+                // 1000 deg/sec
+                conversion = 1000./counts;
+                break;
+            case 2:
+                // 500 deg/sec
+                conversion = 500./counts;
+                break;
+            case 3:
+                // 250 deg/sec
+                conversion = 250./counts;
+                break;
+            case 4:
+                // 125 deg/sec
+                conversion = 125./counts;
+                break;
+        }
+
+        // Convert from the raw value and scale it to milli-deg/sec.
+        float converted = (data * conversion) * 1000;
+
+        // Take floating point and convert to an integer.
+        return (static_cast<int16_t>(converted));
+    };
+
+    int8_t gyroRange = static_cast<int8_t>(payload[offsetof(ImuData_T, gyroRange)]);
+
+    for (int i = 0, payloadIndex = offsetof(ImuData_T, gyro); i < 3; i++, payloadIndex += 2 )
+    {
+        BE_Get(data, &payload[payloadIndex]);
+        scaledData.gyro_milliDegreesPerSecond[i] = scaleGyro(data, gyroRange); 
+    }
+    
+    // Lambda to convert raw temperature value to scaled value of milli-degreesC.
+    auto scaleTemperature = [&] (int16_t data, uint16_t scale) -> int32_t
+    {
+        float t { (static_cast<float>(data) / scale) * 1000 };
+        
+        return (static_cast<int32_t>(t));
+    };
+
+    uint16_t temperatureScaleFactor { 0 };
+    BE_Get(temperatureScaleFactor, &payload[offsetof(ImuData_T, temperatureScaling)]);
+ 
+    BE_Get(data, &payload[offsetof(ImuData_T, temperature)]);
+    scaledData.temperature_milliDegreesC = scaleTemperature(data, temperatureScaleFactor);
+
+    // IMU data timestamp
+    BE_Get(data32, &payload[offsetof(ImuData_T, timestamp)]);
+    scaledData.timestamp = data32;
+    
+    return {scaledData};
+}
+
+std::optional<uint16_t> Sensor::getIntegrationTime()
+{
+    auto result = this->send_receive(COMMAND_GET_INT_TIMES);
+
+    if (!result || (result->size() != sizeof(uint16_t)))
+    {
+        return std::nullopt;
+    }
+    const auto &payload = *result;
+    uint16_t integrationTime { 0 };
+    BE_Get(integrationTime, &payload[0]);
     return { integrationTime };
+}
+
+std::optional<std::tuple<uint16_t, uint16_t, uint16_t>> Sensor::getIntegrationTimeUsAndLimits()
+{
+    auto result = this->send_receive(COMMAND_GET_INTEG_TIME_LIMITS);
+
+    if (!result || (result->size() != (4 * sizeof(uint16_t)))) // the 4th parameter is the "step size", which is not used
+    {
+        return std::nullopt;
+    }
+    const auto &payload = *result;
+    uint16_t integrationTime { 0 };
+    uint16_t integrationTimeMin { 0 };
+    uint16_t integrationTimeMax { 0 };
+    BE_Get(integrationTime, &payload[0]);
+    BE_Get(integrationTimeMin, &payload[sizeof(uint16_t)]);
+    BE_Get(integrationTimeMax, &payload[2 * sizeof(uint16_t)]);
+
+    return std::make_optional(std::tuple(integrationTime, integrationTimeMin, integrationTimeMax));
+}
+
+std::optional<std::tuple<std::array<std::byte, 4>, uint16_t>> Sensor::getLogIpv4Destination()
+{
+    auto result = this->send_receive(COMMAND_GET_UDP_LOG_SETUP);
+    if(result && result->size() >= 6)
+    {
+        const auto& payload = *result;
+        uint16_t port {};
+        BE_Get(port, &payload[4]);
+
+        auto addr = std::array<std::byte, 4>();
+        std::copy_n((std::byte*)(payload.data()), addr.size(), addr.begin());
+
+        return std::make_optional(std::make_tuple(addr, port));
+    }
+    return std::nullopt;
+
+}
+
+std::optional<uint16_t> Sensor::getMinAmplitude()
+{
+    auto result = this->send_receive(COMMAND_GET_MIN_AMPLITUDE);
+
+    if (!result || (result->size() != sizeof(uint16_t)))
+    {
+        return std::nullopt;
+    }
+    const auto &payload = *result;
+    uint16_t minAmplitude { 0 };
+    BE_Get(minAmplitude, &payload[0]);
+    return { minAmplitude };
+}
+
+std::optional<std::tuple<uint16_t, uint16_t, uint16_t>> Sensor::getMinAmplitudeAndLimits()
+{
+    auto result = this->send_receive(COMMAND_GET_MIN_AMPLITUDE_LIMITS);
+
+    if (!result || (result->size() != (4 * sizeof(uint16_t)))) // the 4th parameter is the "step size", which is not used
+    {
+        return std::nullopt;
+    }
+    const auto &payload = *result;
+    uint16_t minAmplitude { 0 };
+    uint16_t minMinAmplitude { 0 };
+    uint16_t maxMinAmplitude { 0 };
+    BE_Get(minAmplitude, &payload[0]);
+    BE_Get(minMinAmplitude, &payload[sizeof(uint16_t)]);
+    BE_Get(maxMinAmplitude, &payload[2 * sizeof(uint16_t)]);
+
+    return std::make_optional(std::tuple(minAmplitude, minMinAmplitude, maxMinAmplitude));
+}
+
+std::optional<std::tuple<uint16_t, uint16_t, uint16_t, uint16_t>> Sensor::getModulationFreqKhzAndLimitsAndStepSize()
+{   
+    auto result = this->send_receive(COMMAND_GET_MOD_FREQ_LIMITS);
+
+    if (!result || (result->size() != (4 * sizeof(uint16_t))))
+    {
+        return std::nullopt;
+    }
+    const auto &payload = *result;
+    uint16_t modFreq { 0 };
+    uint16_t modFreqMin { 0 };
+    uint16_t modFreqMax { 0 };
+    uint16_t modFreqStep { 0 };
+    BE_Get(modFreq, &payload[0]);
+    BE_Get(modFreqMin, &payload[sizeof(uint16_t)]);
+    BE_Get(modFreqMax, &payload[2 * sizeof(uint16_t)]);
+    BE_Get(modFreqStep, &payload[3 * sizeof(uint16_t)]);
+
+    return std::make_optional(std::tuple(modFreq, modFreqMin, modFreqMax, modFreqStep));
 }
 
 bool Sensor::getLensInfo(std::vector<double>& rays_x, std::vector<double>& rays_y, std::vector<double>& rays_z)
@@ -347,15 +610,50 @@ bool Sensor::getSettings(std::string& jsonSettings)
     return true;
 }
 
+std::optional<std::tuple<uint16_t, uint16_t, uint16_t>> Sensor::getVledSettingAndLimits()
+{
+    auto result = this->send_receive(COMMAND_GET_VLED_LIMITS);
+
+    if (!result || (result->size() != (4 * sizeof(uint16_t)))) // the 4th parameter is the "step size", which is not used
+    {
+        return std::nullopt;
+    }
+    const auto &payload = *result;
+    uint16_t vledSetting { 0 };
+    uint16_t vledMax { 0 };
+    uint16_t vledMin { 0 };
+    BE_Get(vledSetting, &payload[0]);
+    BE_Get(vledMax, &payload[sizeof(uint16_t)]);
+    BE_Get(vledMin, &payload[2 * sizeof(uint16_t)]);
+
+    return std::make_optional(std::tuple(vledSetting, vledMax, vledMin));
+}
+
 std::optional<VsmControl_T> Sensor::getVsmSettings()
 {
     auto result = this->send_receive(COMMAND_GET_VSM);
-    if(result && result->size() == sizeof(VsmControl_T))
+    if(result && (result->size() == sizeof(VsmControl_T)))
     {
         VsmControl_T vsmControl {};
         memcpy((void*)&vsmControl, result->data(), sizeof(vsmControl));
         vsmEndianConversion(vsmControl);
         return { vsmControl };
+    }
+    else
+    {
+        return std::nullopt;
+    }
+}
+
+std::optional<uint32_t> Sensor::getVsmMaxNumberOfElements()
+{
+    auto result = this->send_receive(COMMAND_GET_VSM_MAX_NUMBER_ELEMENTS);
+    if(result && (result->size() == sizeof(uint32_t)))
+    {
+        const auto& payload = *result;
+        uint32_t vsmLimit { 0 };
+        BE_Get(vsmLimit, &payload[0]);
+        return { vsmLimit };
     }
     else
     {
@@ -442,23 +740,43 @@ void Sensor::jumpToBootloader(uint16_t token)
     this->send_receive(COMMAND_JUMP_TO_BOOLOADER, token);
 }
 
+/**
+ * @brief Enable binning if *either* value is true.
+ * @note we do not support binning individual axes. This method is left in the 
+ * interface for backward compatibility.
+ * 
+ * @param vertical 
+ * @param horizontal 
+ * @return true Success
+ * @return false Failure.
+ */
 bool Sensor::setBinning(const bool vertical, const bool horizontal)
 {
-    uint8_t byte = 0;
-    if (vertical && horizontal)
-    {
-        byte = 3;
-    }
-    else if (vertical)
-    {
-        byte = 1;
-    }
-    else if (horizontal)
-    {
-        byte = 2;
-    }
+    bool enable = (vertical || horizontal);
+    return setBinning(enable);
+}
+
+bool Sensor::setBinning(const bool binning)
+{
+    uint8_t byte = (binning) ? 3 : 0;
 
     return bool{this->send_receive(COMMAND_SET_BINNING, byte)};
+}
+
+std::optional<uint8_t> Sensor::getBinning()
+{
+    auto result = this->send_receive(COMMAND_GET_BINNING);
+
+    if (!result)
+    {
+        return std::nullopt;
+    }
+    const auto &payload = *result;
+
+    uint8_t binning = 0;
+    BE_Get(binning, &payload[0]);
+
+    return uint8_t{binning};
 }
 
 bool Sensor::setFlipHorizontally(bool flip)
@@ -471,6 +789,43 @@ bool Sensor::setFlipVertically(bool flip)
 {
     const uint8_t data = (flip ? 1 : 0);
     return bool{this->send_receive(COMMAND_SET_VERT_FLIP_STATE, data)};
+}
+
+bool Sensor::setFramePeriodMs(uint32_t periodMs)
+{
+    uint32_t params[] = {native_to_big(periodMs)};
+    return this->send_receive(COMMAND_SET_FRAME_PERIOD_MS, {(std::byte*)params, sizeof(params)}).has_value();
+}
+
+bool Sensor::setHdr(bool enable, bool useSpatial)
+{
+    uint8_t data = ((useSpatial ? 1 : 0) << 1) | (enable ? 1: 0);
+    return bool{this->send_receive(COMMAND_SET_HDR, data)};
+}
+
+std::optional<HdrSettings_T> Sensor::getHdrSettings()
+{
+    HdrSettings_T settings {};
+    auto result = this->send_receive(COMMAND_GET_HDR);
+    if (result)
+    {
+        decltype(auto) answer = result.value();
+        if (answer.size() > 0)
+        {
+            const uint8_t data = (*reinterpret_cast<const uint8_t*>(answer.data()));
+            if(data & 1) {
+                settings.enabled = true;
+            }
+            if(data& (1<<1)) {
+                settings.mode = HdrMode_e::SPATIAL;
+            }
+            else {
+                settings.mode = HdrMode_e::TEMPORAL;
+            }
+            return settings;
+        }
+    }
+    return std::nullopt; 
 }
 
 bool Sensor::setIntegrationTime(uint16_t low)
@@ -491,6 +846,14 @@ bool Sensor::setIPv4Settings(const std::array<std::byte, 4>& adrs, const std::ar
     std::copy(std::begin(mask), std::end(mask), std::back_inserter(ipData));
     std::copy(std::begin(gateway), std::end(gateway), std::back_inserter(ipData));
     return this->send_receive(COMMAND_SET_CAMERA_IP_SETTINGS, {ipData.data(), ipData.size()}).has_value();
+}
+
+bool Sensor::setLogIPv4Destination(const std::array<std::byte, 4>& adrs, const uint16_t port)
+{
+    std::vector<std::byte> ipData { std::begin(adrs), std::end(adrs) };
+    ipData.push_back((std::byte)(port >> 8));
+    ipData.push_back((std::byte)(port));
+    return this->send_receive(COMMAND_SETUP_UDP_LOG, {ipData.data(), ipData.size()}).has_value();
 }
 
 bool Sensor::setMinAmplitude(uint16_t minAmplitude)
@@ -553,6 +916,7 @@ bool Sensor:: getIPv4Settings(std::array<std::byte, 4>& adrs, std::array<std::by
     }
 }
 
+
 bool Sensor::setIPMeasurementEndpoint(std::array<std::byte,4> address, uint16_t dataPort)
 {
     std::byte payload[address.size() + sizeof(dataPort)];
@@ -601,6 +965,11 @@ bool Sensor::streamDCS()
 bool Sensor::streamDCSAmbient()
 {
     return this->pimpl->request_measurement_stream(COMMAND_GET_DCS_AMBIENT);
+}
+
+bool Sensor::streamDCSDiffAmbient()
+{
+    return this->pimpl->request_measurement_stream(COMMAND_GET_DCS_DIFF_AMBIENT);
 }
 
 bool Sensor::streamDistance()

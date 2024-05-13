@@ -22,7 +22,8 @@ using namespace tofcore;
 using namespace TofComm;
 
 static uint32_t baudRate { DEFAULT_BAUD_RATE };
-static bool captureAmxxx { false };
+static bool captureAmbient { false };
+static bool captureAmplitude { false };
 static bool captureDistance { false };
 static std::string devicePort { DEFAULT_PORT_NAME };
 static bool enableBinning { false };
@@ -31,10 +32,11 @@ static size_t verbosity { 0 };
 static uint16_t modulation { 0 };
 static uint16_t integration_time { 0 };
 
+static std::atomic<uint32_t> ambientCount;
 static std::atomic<uint32_t> amplitudeCount;
 static std::atomic<uint32_t> dcsCount;
+static std::atomic<uint32_t> dcsDiffCount;
 static std::atomic<uint32_t> distanceCount;
-static std::atomic<uint32_t> grayscaleCount;
 
 
 static void measurement_callback(std::shared_ptr<tofcore::Measurement_T> pData)
@@ -58,13 +60,6 @@ static void measurement_callback(std::shared_ptr<tofcore::Measurement_T> pData)
                 std::cout << "received DCS measurement data, packet size " << pData->pixel_buffer().size() << std::endl;
             }
             break;
-        case DataType::GRAYSCALE:
-            ++grayscaleCount;
-            if (verbosity > 1)
-            {
-                std::cout << "received GRAYSCALE measurement data, packet size " << pData->pixel_buffer().size() << std::endl;
-            }
-            break;
         case DataType::DISTANCE:
             ++distanceCount;
             if (verbosity > 1)
@@ -81,14 +76,23 @@ static void measurement_callback(std::shared_ptr<tofcore::Measurement_T> pData)
             }
             break;
         case DataType::AMBIENT:
-            ++amplitudeCount;
+            ++ambientCount;
             if (verbosity > 1)
             {
                 std::cout << "received AMBIENT measurement data, packet size "
                           << (pData->pixel_buffer().size()) << std::endl;
             }
             break;
-        
+        case DataType::DCS_DIFF_AMBIENT:
+            ++ambientCount;
+            ++dcsDiffCount;
+            if (verbosity > 1)
+            {
+                std::cout << "received DCS_DIFF+AMBIENT measurement data, packet size "
+                          << (pData->pixel_buffer().size()) << std::endl;
+            }
+            break;
+
         default:
             std::cout << "UNRECOGNIZED data type: " << static_cast<int16_t>(pData->type()) << std::endl;
     }
@@ -168,11 +172,11 @@ static void measurement_callback(std::shared_ptr<tofcore::Measurement_T> pData)
                 VsmElement_T& element = vsmControl->m_elements[n];
                 std::cout << " [" << element.m_integrationTimeUs << ", " << element.m_modulationFreqKhz << "]";
             }
-            std::cout << std::endl << std::endl;
+            std::cout << "\n\n";
         }
         else
         {
-            std::cout << "  No VSM data" << std::endl << std::endl;
+            std::cout << "  No VSM data" << "\n\n";
         }
     }
 }
@@ -214,8 +218,8 @@ static void parseArgs(int argc, char *argv[])
         ("device-uri,p", po::value<std::string>(&devicePort))
         ("baud-rate,b", po::value<uint32_t>(&baudRate)->default_value(DEFAULT_BAUD_RATE))
         ("Binning,B", po::bool_switch(&enableBinning)->default_value(false),"Enable full binning")
-        ("amplitude,a", po::bool_switch(&captureAmxxx), "Capture DCS+Ambient or Distance Amplitude frames, (not just DCS or Distance)")
-        ("ambient", po::bool_switch(&captureAmxxx), "Capture DCS+Ambient or Distance Amplitude frames, (not just DCS or Distance)")
+        ("amplitude,a", po::bool_switch(&captureAmplitude), "Capture DCS+Ambient or Distance+Amplitude frames, (not just DCS or Distance)")
+        ("ambient,A", po::bool_switch(&captureAmbient), "Capture DCS+Ambient or Distance+Amplitude frames, (not just DCS or Distance)")
         ("distance,d", po::bool_switch(&captureDistance),  "Capture distance (or amplitude) frames instead of DCS frames")
         ("modulation,m", po::value<uint16_t>(&modulation)->default_value(0),"Set modulation frequency to this value (kHz)")
         ("integration,i", po::value<uint16_t>(&integration_time)->default_value(0),"Set integration time to this value (uS)")
@@ -346,7 +350,7 @@ int main(int argc, char *argv[])
         sensor.subscribeMeasurement(&measurement_callback); // callback is called from background thread
         if (captureDistance)
         {
-            if (captureAmxxx)
+            if (captureAmbient || captureAmplitude)
             {
                 sensor.streamDistanceAmplitude();
             }
@@ -357,7 +361,7 @@ int main(int argc, char *argv[])
         }
         else
         {
-            if (captureAmxxx)
+            if (captureAmbient || captureAmplitude)
             {
                 sensor.streamDCSAmbient();
             }

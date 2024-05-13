@@ -76,5 +76,11 @@ std::optional<std::array<float, TofComm::KLV_NUM_TEMPERATURES>> decode_sensor_te
 /// @return std::option<VsmControl_T> when the data is found
 std::optional<TofComm::VsmControl_T> decode_vsm_info(const KLVDecoder& klv);
 
+/// @brief Search the provided KLV data for the frame timestamp
+/// @param klv
+/// @return std::nullopt if the data is not found.
+/// @return std::option<VsmControl_T> when the data is found
+std::optional<uint32_t> decode_frame_timestamp(const KLVDecoder& klv);
+
 } //end namespace tofcore
 #endif //_TOFCORE_KLV_DECODER_HPP_

@@ -21,7 +21,9 @@ using namespace tofcore;
 using namespace TofComm;
 
 static uint32_t baudRate { DEFAULT_BAUD_RATE };
-static bool captureAmxxx { false };
+static bool captureAmbient { false };
+static bool captureAmplitude { false };
+static bool captureDcsDiff { false };
 static bool captureDistance { false };
 static std::string devicePort { DEFAULT_PORT_NAME };
 static bool enableBinning { false };
@@ -29,15 +31,24 @@ static volatile bool exitRequested { false };
 static size_t verbosity { 0 };
 static uint16_t modulation { 0 };
 static uint16_t integration_time { 0 };
+static bool setFramePeriod { false };
+static uint32_t framePeriodMs { 1000 };
 
+static std::atomic<uint32_t> ambientCount;
 static std::atomic<uint32_t> amplitudeCount;
 static std::atomic<uint32_t> dcsCount;
+static std::atomic<uint32_t> dcsDiffCount;
 static std::atomic<uint32_t> distanceCount;
-static std::atomic<uint32_t> grayscaleCount;
 
 
 static void measurement_callback(std::shared_ptr<tofcore::Measurement_T> pData)
 {
+    static high_resolution_clock::time_point lastTime { high_resolution_clock::now() };
+    high_resolution_clock::time_point timeNow = high_resolution_clock::now();
+
+    duration<double> framePeriod { duration_cast<duration<double>>(timeNow - lastTime) };
+    lastTime = timeNow;
+
     using DataType = tofcore::Measurement_T::DataType;
     switch (pData->type())
     {
@@ -46,50 +57,92 @@ static void measurement_callback(std::shared_ptr<tofcore::Measurement_T> pData)
             ++distanceCount;
             if (verbosity > 0)
             {
-                std::cout << "received DISTANCE-AMPLITUDE measurement data, packet size "
+                std::cout << "[" << framePeriod.count() << "] DISTANCE-AMPLITUDE measurement data, packet size "
                           << (pData->pixel_buffer().size()) << std::endl;
+                auto distanceData = pData->distance();
+                uint32_t adcErrors { 0 };
+                uint32_t amplitudeErrors { 0 };
+                uint32_t goodPixels { 0 };
+                uint32_t ignoredPixels { 0 };
+                uint32_t pixelErrors { 0 };
+                uint32_t saturatedPixels { 0 };
+                for (auto p = distanceData.begin(); p != distanceData.end(); ++p)
+                {
+                    auto distance = *p;
+                    if ((distance & 0x0001) != 0)
+                    {
+                        ++pixelErrors;
+                        auto errCode = (distance & 0x000E);
+                        if (errCode == 0x0002)
+                        {
+                            ++saturatedPixels;
+                        }
+                        else if (errCode == 0x0004)
+                        {
+                            ++ignoredPixels;
+                        }
+                        else if (errCode == 0x0008)
+                        {
+                            ++amplitudeErrors;
+                        }
+                        else
+                        {
+                            ++adcErrors;
+                        }
+                    }
+                    else
+                    {
+                        ++goodPixels;
+                    }
+                }
+                std::cout << "\tGood pixels: " << goodPixels << "; Errors: " << pixelErrors
+                          << "; amplitude: " << amplitudeErrors << "; saturated: " << saturatedPixels
+                          << "; ADC: " << adcErrors << "\n";
+
             }
             break;
         case DataType::DCS:
             ++dcsCount;
             if (verbosity > 0)
             {
-                std::cout << "received DCS measurement data, packet size " << pData->pixel_buffer().size() << std::endl;
-            }
-            break;
-        case DataType::GRAYSCALE:
-            ++grayscaleCount;
-            if (verbosity > 0)
-            {
-                std::cout << "received GRAYSCALE measurement data, packet size " << pData->pixel_buffer().size() << std::endl;
+                std::cout << "[" << framePeriod.count() << "] DCS measurement data, packet size " << pData->pixel_buffer().size() << std::endl;
             }
             break;
         case DataType::DISTANCE:
             ++distanceCount;
             if (verbosity > 0)
             {
-                std::cout << "received DISTANCE measurement data, packet size " << pData->pixel_buffer().size() << std::endl;
+                std::cout << "[" << framePeriod.count() << "] DISTANCE measurement data, packet size " << pData->pixel_buffer().size() << std::endl;
             }
             break;
         case DataType::AMPLITUDE:
             ++amplitudeCount;
             if (verbosity > 0)
             {
-                std::cout << "received AMPLITUDE measurement data, packet size "
+                std::cout << "[" << framePeriod.count() << "] AMPLITUDE measurement data, packet size "
                           << (pData->pixel_buffer().size()) << std::endl;
             }
             break;
         case DataType::AMBIENT:
-            ++amplitudeCount;
+            ++ambientCount;
             if (verbosity > 0)
             {
-                std::cout << "received AMBIENT measurement data, packet size "
+                std::cout << "[" << framePeriod.count() << "] AMBIENT measurement data, packet size "
                           << (pData->pixel_buffer().size()) << std::endl;
             }
             break;
-        
+        case DataType::DCS_DIFF_AMBIENT:
+            ++ambientCount;
+            ++dcsDiffCount;
+            if (verbosity > 0)
+            {
+                std::cout << "[" << framePeriod.count() << "] DCS_DIFF+AMBIENT measurement data, packet size "
+                          << (pData->pixel_buffer().size()) << std::endl;
+            }
+            break;
+
         default:
-            std::cout << "UNRECOGNIZED data type: " << static_cast<int16_t>(pData->type()) << std::endl;
+            std::cout << "[" << framePeriod.count() << "] UNRECOGNIZED data type: " << static_cast<int16_t>(pData->type()) << std::endl;
     }
     if(verbosity > 0)
     {
@@ -167,12 +220,24 @@ static void measurement_callback(std::shared_ptr<tofcore::Measurement_T> pData)
                 VsmElement_T& element = vsmControl->m_elements[n];
                 std::cout << " [" << element.m_integrationTimeUs << ", " << element.m_modulationFreqKhz << "]";
             }
-            std::cout << "\n\n";
+            std::cout << std::endl;
         }
         else
         {
-            std::cout << "  No VSM data" << "\n\n";
+            std::cout << "  No VSM data" << std::endl;
         }
+
+        auto timestamp = pData->frame_timestamp();
+        if(timestamp)
+        {
+            std::cout << "  Frame timestamp: " << (int) *timestamp << std::endl;
+        }
+        else
+        {
+            std::cout << "No timestamp found in frame data" << std::endl;
+        }
+
+        std::cout << "\n\n";
     }
 }
 
@@ -213,11 +278,13 @@ static void parseArgs(int argc, char *argv[])
         ("device-uri,p", po::value<std::string>(&devicePort))
         ("baud-rate,b", po::value<uint32_t>(&baudRate)->default_value(DEFAULT_BAUD_RATE))
         ("Binning,B", po::bool_switch(&enableBinning)->default_value(false),"Enable full binning")
-        ("amplitude,a", po::bool_switch(&captureAmxxx), "Capture DCS+Ambient or Distance Amplitude frames, (not just DCS or Distance)")
-        ("ambient", po::bool_switch(&captureAmxxx), "Capture DCS+Ambient or Distance Amplitude frames, (not just DCS or Distance)")
+        ("amplitude,a", po::bool_switch(&captureAmplitude), "Capture DCS+Ambient or Distance+Amplitude frames, (not just DCS or Distance)")
+        ("ambient,A", po::bool_switch(&captureAmbient), "Capture DCS+Ambient or Distance+Amplitude frames, (not just DCS or Distance)")
         ("distance,d", po::bool_switch(&captureDistance),  "Capture distance (or amplitude) frames instead of DCS frames")
+        ("Dcs-diff,D", po::bool_switch(&captureDcsDiff),  "Capture DCS_DIFF + Ambient frames")
         ("modulation,m", po::value<uint16_t>(&modulation)->default_value(0),"Set modulation frequency to this value (kHz)")
         ("integration,i", po::value<uint16_t>(&integration_time)->default_value(0),"Set integration time to this value (uS)")
+        ("frame-period,f", po::value<uint32_t>(&framePeriodMs),"Set target frame period (mS)")
         ("verbose,V",               
            new  CountValue(&verbosity),
             "Increase verbosity of output")
@@ -226,6 +293,10 @@ static void parseArgs(int argc, char *argv[])
     po::variables_map vm;
     po::store(po::parse_command_line(argc, argv, desc), vm);
     po::notify(vm);
+    if (vm.count("frame-period"))
+    {
+        setFramePeriod = true;
+    }
     if (vm.count("help")) {
         std::cout << desc << "\n";
         exit(0);
@@ -258,16 +329,15 @@ int main(int argc, char *argv[])
     signal(SIGQUIT, signalHandler);
     #endif
     {
-
         tofcore::Sensor sensor { devicePort, baudRate };
 
         if (enableBinning)
         {
-            sensor.setBinning(true, true);
+            sensor.setBinning(true);
         }
         else
         {
-            sensor.setBinning(false, false);
+            sensor.setBinning(false);
         }
         if(modulation)
         {
@@ -279,10 +349,34 @@ int main(int argc, char *argv[])
             sensor.setIntegrationTime(integration_time);
         }
 
-        sensor.subscribeMeasurement(&measurement_callback); // callback is called from background thread
-        if (captureDistance)
+        if (setFramePeriod)
         {
-            if (captureAmxxx)
+            if (!sensor.setFramePeriodMs(framePeriodMs))
+            {
+                std::cerr << "FAILED to set frame period to " << framePeriodMs << " mS\n";
+            }
+        }
+
+        auto framePeriodData = sensor.getFramePeriodMsAndLimits();
+        if (framePeriodData)
+        {
+            auto [framePeriodMs, framePeriodMsMin, framePeriodMsMax] = *framePeriodData;
+            std::cout << "Frame Period: " << framePeriodMs << " mS; Min: " << framePeriodMsMin
+                      << " mS; Max: " << framePeriodMsMax << " mS\n";
+        }
+        else
+        {
+            std::cerr << "FAILED to get frame period data\n";
+        }
+
+        sensor.subscribeMeasurement(&measurement_callback); // callback is called from background thread
+        if (captureDcsDiff)
+        {
+            sensor.streamDCSDiffAmbient();
+        }
+        else if (captureDistance)
+        {
+            if (captureAmbient || captureAmplitude)
             {
                 sensor.streamDistanceAmplitude();
             }
@@ -293,7 +387,7 @@ int main(int argc, char *argv[])
         }
         else
         {
-            if (captureAmxxx)
+            if (captureAmbient || captureAmplitude)
             {
                 sensor.streamDCSAmbient();
             }
@@ -303,21 +397,29 @@ int main(int argc, char *argv[])
             }
         }
         auto lastTime = steady_clock::now();
+        uint32_t outputCount = 1;
         while (!exitRequested) // wait for ^\ or ^C
         {
             std::this_thread::sleep_until(lastTime + 1000ms);
             lastTime = steady_clock::now();
+            const uint32_t ambient { ambientCount };
+            ambientCount = 0;
             const uint32_t amplitude { amplitudeCount };
             amplitudeCount = 0;
             const uint32_t dcs { 4 * dcsCount };
             dcsCount = 0;
+            const uint32_t dcsDiff { 2 * dcsDiffCount };
+            dcsDiffCount = 0;
             const uint32_t distance { distanceCount };
             distanceCount = 0;
-            const uint32_t grayscale { grayscaleCount };
-            grayscaleCount = 0;
-            std::cout << "RAW FPS: amplitude = " << amplitude << "; dcs = " << dcs
-                      << "; distance = " << distance << "; grayscale = " << grayscale
-                      << "; total = " << (amplitude + dcs + distance + grayscale) << std::endl;
+            std::cout << "[" << std::setw(5) << std::setfill('0') << outputCount
+                      <<"] FPS: ambient = " << std::setw(2) << ambient
+                      << "; amplitude = " << std::setw(2) << amplitude
+                      << "; dcs = " << std::setw(2) << dcs
+                      << "; dcsDiff = " << std::setw(2) << dcsDiff
+                      << "; distance = " << std::setw(2) << distance
+                      << "; total = " << std::setw(3) << (ambient + amplitude + dcs + dcsDiff + distance) << std::endl;
+            ++outputCount;
         }
         std::cout << "Shutting down..." << std::endl;
         sensor.stopStream();
