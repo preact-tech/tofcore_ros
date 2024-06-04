@@ -24,8 +24,6 @@ pipeline:
 provision:
 	vcs import < required.repos . --recursive
 	vcs --nested custom --git --args show
-	rm -rf ros2/tofcore_ros/libtofcore ros2/tofcore_discovery/libtofcore ros1/tofcore_ros/libtofcore
-	cd ros2 && ln -fs ../../libtofcore tofcore_ros/libtofcore
 
 .PHONY: provision_bridge
 provision_bridge: provision ##	Install required tools, packages and git repos to build the truenense package as well as the ROS bridge package
@@ -39,16 +37,15 @@ provision_ros1: provision ##	Install required tools, packages and git repos to b
 	sudo sh -c 'echo "deb http://packages.ros.org/ros/ubuntu $(TARGET_DISTRO_VER) main" > /etc/apt/sources.list.d/ros-noetic.list'
 	curl -s https://raw.githubusercontent.com/ros/rosdistro/master/ros.asc | sudo apt-key add -
 	sudo apt update && sudo apt install -y ros-noetic-desktop-full python3-catkin-pkg
-	cd ros1 && ln -fs ../../libtofcore tofcore_ros/libtofcore
 
 
 .PHONY: ros2
 ros2:
-	 export PREACT_CPPCHECK_ENABLE="OFF" && cd ros2 && colcon build --packages-skip ros1_bridge preact_alg detection_py lens_calibration 
+	cd ros2 && colcon build --packages-skip ros1_bridge preact_alg detection_py lens_calibration 
 	 
 .PHONY: ros1
 ros1:
-	 export PREACT_CPPCHECK_ENABLE="OFF" && cd ros1 &&  source /opt/ros/noetic/setup.bash && colcon build
+	cd ros1 &&  source /opt/ros/noetic/setup.bash && colcon build
 
 .PHONY: bridge
 bridge: build ##	Build the ROS1 bridge, build environment must have both ROS1 and ROS2 installed
@@ -79,5 +76,5 @@ clean:
 	rm -r -f *.zsync
 .PHONY: clobber
 clobber: clean
-	rm -rf ros2/tofcore_ros/libtofcore ros1/tofcore_ros/libtofcore algorithm ros2/algorithm
+	rm -rf algorithm ros2/algorithm
 	rm -r -f ros1_bridge

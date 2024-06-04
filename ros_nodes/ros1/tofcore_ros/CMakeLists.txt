@@ -4,6 +4,8 @@ project(tofcore_ros1)
 ## Compile as C++11, supported in ROS Kinetic and newer
 # add_compile_options(-std=c++11)
 
+set(ENV{PREACT_CPPCHECK_ENABLE} "OFF")
+
 ## Find catkin macros and libraries
 ## if COMPONENTS list like find_package(catkin REQUIRED COMPONENTS xyz)
 ## is used, also find other catkin packages
@@ -22,13 +24,12 @@ find_package( OpenCV REQUIRED )
 ## System dependencies are found with CMake's conventions
 # find_package(Boost REQUIRED COMPONENTS system)
 
-find_package(ToFCore QUIET)
 if(NOT TARGET ToFCore::ToFCore)
-  if (EXISTS "${CMAKE_SOURCE_DIR}/libtofcore" AND EXISTS "${CMAKE_SOURCE_DIR}/libtofcore/CMakeLists.txt")
+  if (EXISTS "${CMAKE_SOURCE_DIR}/../../libtofcore" AND EXISTS "${CMAKE_SOURCE_DIR}/../../libtofcore/CMakeLists.txt")
     set(BUILD_PYTHON_BINDINGS OFF)
-    add_subdirectory(libtofcore/tofcore)
+    add_subdirectory(../../libtofcore/tofcore ${CMAKE_CURRENT_BINARY_DIR}/tofcore)
   else()
-    message(FATAL_ERROR "ToFCore library must be installed to ${CMAKE_INSTALL_PREFIX} OR present at ${CMAKE_SOURCE_DIR}/libtofcore")
+    message(FATAL_ERROR "ToFCore library must be installed to ${CMAKE_SOURCE_DIR}/../../libtofcore")
   endif()
 endif()
 

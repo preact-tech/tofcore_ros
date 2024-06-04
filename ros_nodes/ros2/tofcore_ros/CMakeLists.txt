@@ -5,6 +5,7 @@ if(CMAKE_COMPILER_IS_GNUCXX OR CMAKE_CXX_COMPILER_ID MATCHES "Clang")
   add_compile_options(-Wall -Wextra -Wpedantic)
 endif()
 
+set(ENV{PREACT_CPPCHECK_ENABLE} "OFF")
 
 # find dependencies
 find_package(ament_cmake REQUIRED)
@@ -19,13 +20,12 @@ find_package(rosidl_typesupport_cpp REQUIRED)
 find_package(rosidl_default_generators REQUIRED)
 
 
-find_package(ToFCore QUIET)
-if(NOT TARGET ToFCore::ToFCore )
-  if (EXISTS "${CMAKE_SOURCE_DIR}/libtofcore" AND EXISTS "${CMAKE_SOURCE_DIR}/libtofcore/CMakeLists.txt")
+if(NOT TARGET ToFCore::ToFCore)
+  if (EXISTS "${CMAKE_SOURCE_DIR}/../../libtofcore" AND EXISTS "${CMAKE_SOURCE_DIR}/../../libtofcore/CMakeLists.txt")
     set(BUILD_PYTHON_BINDINGS OFF)
-    add_subdirectory(libtofcore/tofcore)
+    add_subdirectory(../../libtofcore/tofcore ${CMAKE_CURRENT_BINARY_DIR}/tofcore)
   else()
-    message(FATAL_ERROR "ToFCore library must be installed to ${CMAKE_INSTALL_PREFIX} OR present at ${CMAKE_SOURCE_DIR}/libtofcore")
+    message(FATAL_ERROR "ToFCore library must be installed to ${CMAKE_SOURCE_DIR}/../../libtofcore")
   endif()
 endif()
 
