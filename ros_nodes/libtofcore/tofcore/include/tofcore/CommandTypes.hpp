@@ -8,6 +8,7 @@
  * Declares constants and types associated with the TOF communication interface.
  */
 #include <cstdint>
+#include <array>
 
 #ifdef __GNUC__
 #define PACK_START
@@ -109,6 +110,25 @@ PACK_START struct Sensor_Status_t
     int16_t  USB_Current;
     uint32_t BIT_Status;
 } PACK_END;
+
+enum class HdrMode_e
+{
+    UNKOWN, TEMPORAL, SPATIAL
+};
+
+struct HdrSettings_T
+{
+    bool enabled {false};
+    HdrMode_e mode {HdrMode_e::UNKOWN};
+};
+
+struct ImuScaledData_T
+{
+    std::array<int16_t, 3> accelerometer_millig { 0, 0, 0 };
+    std::array<int16_t, 3> gyro_milliDegreesPerSecond { 0, 0, 0 }; 
+    int32_t temperature_milliDegreesC { 0 };
+    uint32_t timestamp { 0 };
+};
 
 } //end namespace TofComm
 

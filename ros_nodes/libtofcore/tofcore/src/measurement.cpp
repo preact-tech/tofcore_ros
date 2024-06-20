@@ -118,7 +118,7 @@ public:
         return {m_pixel_data.data(), m_pixel_data.size()};
     }
 
-    /// @brief Obtain a view of one of the dcs frames from a DCS mesaurement
+    /// @brief Obtain a view of one of the dcs frames from a DCS measurement
     /// @param dcs_index index of DCS frame to return 0-3
     /// @return view of requested DCS frame data
     /// @return empty view if index out of range or not a DCS measurement
@@ -133,6 +133,22 @@ public:
         return {ptr, size};
     }
 
+    /// @brief Obtain a view of one of either the (DCS2-DCS0)
+    ///        or (DCS3-DCS1) frames from a DCS Diff + Ambient measurement
+    /// @param index 0 for (DCS2-DCS0), 1 for (DCS3-DCS1)
+    /// @return view of requested frame data
+    /// @return empty view if index out of range or not a DCS Diff + Ambient measurement
+    virtual BufferView<int16_t> dcs_diff(int index) const override
+    {
+        if(DataType::DCS_DIFF_AMBIENT != type() || index < 0 || index > 1)
+        {
+            return {nullptr, 0};
+        }
+        std::size_t size = width() * height();
+        auto ptr = reinterpret_cast<int16_t*>(m_pixel_data.data()) + size * index;
+        return {ptr, size};
+    }
+
     /// @brief Obtain a view of the distance data from a distance measurement
     /// @return view of distance data
     /// @return empty view if not a distance measurement
@@ -140,15 +156,15 @@ public:
     {
         switch(type())
         {
-        case DataType::DISTANCE_AMPLITUDE:
-        case DataType::DISTANCE:
-        {
-            std::size_t size = width() * height();
-            auto ptr = reinterpret_cast<uint16_t*>(m_pixel_data.data());
-            return {ptr, size};
-        }
-        default:
-            return {nullptr, 0};
+            case DataType::DISTANCE_AMPLITUDE:
+            case DataType::DISTANCE:
+            {
+                std::size_t size = width() * height();
+                auto ptr = reinterpret_cast<uint16_t*>(m_pixel_data.data());
+                return {ptr, size};
+            }
+            default:
+                return {nullptr, 0};
         }
     }
 
@@ -159,36 +175,54 @@ public:
     {
         switch(type())
         {
-        case DataType::AMPLITUDE:
-        {
-            //Note: I don't know if you can actually stream only amplitude, but
-            // type enum exists so I'm covering the case
-            std::size_t size = width() * height();
-            auto ptr = reinterpret_cast<uint16_t*>(m_pixel_data.data());
-            return {ptr, size};
-        }
-        case DataType::DISTANCE_AMPLITUDE:
-        {
-            std::size_t size = width() * height();
-            auto ptr = reinterpret_cast<uint16_t*>(m_pixel_data.data());
-            // the amplitude frame is immediately after the distance frame
-            ptr += size;
-            return {ptr, size};
-        }
-        default:
-            return {nullptr, 0};
+            case DataType::AMPLITUDE:
+            {
+                //Note: I don't know if you can actually stream only amplitude, but
+                // type enum exists so I'm covering the case
+                std::size_t size = width() * height();
+                auto ptr = reinterpret_cast<uint16_t*>(m_pixel_data.data());
+                return {ptr, size};
+            }
+            case DataType::DISTANCE_AMPLITUDE:
+            {
+                std::size_t size = width() * height();
+                auto ptr = reinterpret_cast<uint16_t*>(m_pixel_data.data());
+                // the amplitude frame is immediately after the distance frame
+                ptr += size;
+                return {ptr, size};
+            }
+            default:
+                return {nullptr, 0};
         }
     }
 
-    /// @brief Obtain a view of the grayscale (ambient) data from a grayscale measurement
+    /// @brief Obtain a view of the grayscale (ambient) data from a grayscale
+    ///        measurement or from a DCS Diff + Ambient measurement
     /// @return view of grayscale data
     /// @return empty view if not a grayscale measurement
     virtual BufferView<int16_t> ambient() const override
     {
-        //TODO check DataType
-        std::size_t size = width() * height();
-        auto ptr = reinterpret_cast<int16_t*>(m_pixel_data.data());
-        return {ptr, size};
+        switch(type())
+        {
+            case DataType::AMBIENT:
+            {
+                //Note: I don't know if you can actually stream only amplitude, but
+                // type enum exists so I'm covering the case
+                std::size_t size = width() * height();
+                auto ptr = reinterpret_cast<int16_t*>(m_pixel_data.data());
+                return {ptr, size};
+            }
+            case DataType::DCS_DIFF_AMBIENT:
+            {
+                std::size_t size = width() * height();
+                auto ptr = reinterpret_cast<int16_t*>(m_pixel_data.data());
+                // the ambient frame is immediately after the 2 DCS difference frames
+                ptr += 2*size;
+                return {ptr, size};
+            }
+            default:
+                return {nullptr, 0};
+        }
     }
 
     /// @brief Obtain a view of the raw bytes containing the meta_data associated with the measurement
@@ -270,6 +304,12 @@ public:
     {
         KLVDecoder decoder {m_meta_data.begin(), m_meta_data.end()};
         return decode_vsm_info(decoder);
+    }
+
+    virtual std::optional<uint32_t> frame_timestamp() const override
+    {
+        KLVDecoder decoder {m_meta_data.begin(), m_meta_data.end()};
+        return decode_frame_timestamp(decoder);
     }
 
 protected:

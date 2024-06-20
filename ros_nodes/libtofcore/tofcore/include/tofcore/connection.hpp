@@ -1,7 +1,12 @@
 #if !defined(_TOFCORE_COMMS_HPP)
 #define _TOFCORE_COMMS_HPP
 
-#include "span.hpp"
+#if __cplusplus >= 202002L
+#   include <span>
+#else
+#   define TCB_SPAN_NAMESPACE_NAME std
+#   include "span.hpp"
+#endif
 #include <boost/asio.hpp>
 #include <chrono>
 #include <functional>
@@ -16,7 +21,7 @@ class Connection_T
 {
 public:
     typedef std::function<void(const std::vector<std::byte>&)> on_measurement_callback_t;
-    typedef tcb::span<std::byte> ScatterGatherElement;
+    typedef std::span<std::byte> ScatterGatherElement;
 
 public:
     virtual ~Connection_T() = default;

@@ -10,7 +10,13 @@
 #include "CommandTypes.hpp"
 #include "Measurement_T.hpp"
 #include "device_discovery.hpp"
-#include "span.hpp"
+#if __cplusplus >= 202002L
+#   include <span>
+#else
+#   define TCB_SPAN_NAMESPACE_NAME std
+#   include "span.hpp"
+#endif
+#include "CommandTypes.hpp"
 #include "connection.hpp"
 #include <chrono>
 #include <cstdint>
@@ -24,7 +30,9 @@ namespace tofcore
 
 constexpr const char*   DEFAULT_URI                 { "" }; 
 constexpr uint32_t      DEFAULT_BAUD_RATE           { 115200 };
-constexpr const char*   DEFAULT_PORT_NAME           { "" }; 
+constexpr const char*   DEFAULT_PORT_NAME           { "" };
+
+constexpr uint16_t      DEFAULT_MOD_FREQ_STEP_KHZ   { 10 };
 
 struct LensIntrinsics_t
 {
@@ -74,18 +82,28 @@ public:
 
     ~Sensor();
 
+    std::optional<uint32_t> getFramePeriodMs();
+	std::optional<std::tuple<uint32_t, uint32_t, uint32_t>> getFramePeriodMsAndLimits();
+    std::optional<TofComm::ImuScaledData_T> getImuInfo();
     std::optional<uint16_t> getIntegrationTime();
-    bool getLensInfo(std::vector<double> &rays_x, std::vector<double> &rays_y, std::vector<double> &rays_z);
-    std::optional<LensIntrinsics_t> getLensIntrinsics();
+    std::optional<std::tuple<uint16_t, uint16_t, uint16_t>> getIntegrationTimeUsAndLimits();
     std::optional<std::tuple<std::array<std::byte, 4>, uint16_t>> getIPMeasurementEndpoint();
     bool getIPv4Settings(std::array<std::byte, 4>& adrs, std::array<std::byte, 4>& mask, std::array<std::byte, 4>& gateway);
+    bool getLensInfo(std::vector<double> &rays_x, std::vector<double> &rays_y, std::vector<double> &rays_z);
+    std::optional<LensIntrinsics_t> getLensIntrinsics();
+    std::optional<std::tuple<std::array<std::byte, 4>, uint16_t>> getLogIpv4Destination();
+    std::optional<uint16_t> getMinAmplitude();
+    std::optional<std::tuple<uint16_t, uint16_t, uint16_t>> getMinAmplitudeAndLimits();
+    std::optional<std::tuple<uint16_t, uint16_t, uint16_t, uint16_t>> getModulationFreqKhzAndLimitsAndStepSize();
+    std::optional<uint16_t> getModulation();
     bool getSensorInfo(TofComm::versionData_t &versionData);
     std::optional<std::string> getSensorLocation();
     std::optional<std::string> getSensorName();
     bool getSensorStatus(TofComm::Sensor_Status_t &sensorStatus);
     bool getSettings(std::string& jsonSettings);
+    std::optional<std::tuple<uint16_t, uint16_t, uint16_t>> getVledSettingAndLimits();
     std::optional<TofComm::VsmControl_T> getVsmSettings();
-
+    std::optional<uint32_t> getVsmMaxNumberOfElements();
 
     std::optional<SensorControlStatus> getSensorControlState();
 
@@ -96,15 +114,20 @@ public:
     void jumpToBootloader(uint16_t token);
 
     bool setBinning(const bool vertical, const bool horizontal);
+    bool setBinning(const bool binning);
+    std::optional<uint8_t> getBinning();
     bool setFlipHorizontally(bool flip);
     bool setFlipVertically(bool flip);
+    bool setFramePeriodMs(uint32_t periodMs);
+    bool setHdr(bool enable, bool useSpatial=false);
+    std::optional<TofComm::HdrSettings_T> getHdrSettings();
     bool setIntegrationTime(uint16_t);
     bool setIntegrationTimes(uint16_t, uint16_t, uint16_t);
     bool setIPMeasurementEndpoint(std::array<std::byte,4> address, uint16_t port);
     bool setIPv4Settings(const std::array<std::byte, 4>& adrs, const std::array<std::byte, 4>& mask, const std::array<std::byte, 4>& gateway);
+    bool setLogIPv4Destination(const std::array<std::byte, 4>& adrs, const uint16_t port);
     bool setMinAmplitude(uint16_t minAmplitude);
     bool setModulation(uint16_t modFreqkHz);
-    std::optional<uint16_t> getModulation();
     bool setOffset(int16_t offset);
     bool setSensorLocation(std::string location);
     bool setSensorName(std::string name);
@@ -114,6 +137,7 @@ public:
     bool storeSettings();
 
     bool streamDCS();
+    bool streamDCSDiffAmbient();
     bool streamDistance();
     bool streamDistanceAmplitude();
     bool streamDCSAmbient();
@@ -121,7 +145,7 @@ public:
     void subscribeMeasurement(on_measurement_ready_t);
 
     typedef std::optional<std::vector<std::byte>> send_receive_result_t;
-    typedef tcb::span<std::byte> send_receive_payload_t;
+    typedef std::span<std::byte> send_receive_payload_t;
 
     send_receive_result_t send_receive(const uint16_t command, const send_receive_payload_t& payload,
                                        std::chrono::steady_clock::duration timeout = std::chrono::seconds(5)) const;
