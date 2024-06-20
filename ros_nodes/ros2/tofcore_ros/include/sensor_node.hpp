@@ -40,6 +40,7 @@ class ToFSensor : public rclcpp::Node
     std::unique_ptr<tofcore::Sensor> interface_;
     tofcore::CartesianTransform cartesianTransform_;
     std::string sensor_location_;
+    std::string sensor_uri_;
 
   public:
     /// Standard constructor

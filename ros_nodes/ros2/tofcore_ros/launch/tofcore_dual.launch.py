@@ -28,11 +28,31 @@ def launch_setup(context, *args, **kwargs):
         parameters=[tof_params],
         on_exit=Shutdown()
     )
+    tof_params_2 = all_params["/tof_sensor_2"]["ros__parameters"]
+    ts_camera_2 = Node(
+        package="tof_sensor",
+        executable='tof_sensor',
+        name='tof_sensor_2',
+        output='screen',
+        parameters=[tof_params_2],
+        on_exit=Shutdown()
+    )
     tf = all_params["/tf"]
     tf_string = f"{tf['x']} {tf['y']} {tf['z']} "+ \
                 f"{tf['yaw']} {tf['pitch']} {tf['roll']} "+ \
                 f"{tf['destination']} {tf['source']}"
     tf_node = Node(
+        package="tf2_ros",
+        executable="static_transform_publisher",
+        name='transformer',
+        arguments=tf_string.split()
+        )
+
+    tf = all_params["/tf_2"]
+    tf_string = f"{tf['x']} {tf['y']} {tf['z']} "+ \
+                f"{tf['yaw']} {tf['pitch']} {tf['roll']} "+ \
+                f"{tf['destination']} {tf['source']}"
+    tf_node_2 = Node(
         package="tf2_ros",
         executable="static_transform_publisher",
         name='transformer',
@@ -57,7 +77,7 @@ def launch_setup(context, *args, **kwargs):
     )
     
 
-    retval = [  ts_camera, tf_node,  rviz, rqt_node]
+    retval = [  ts_camera, ts_camera_2,  tf_node, tf_node_2, rviz, rqt_node]
 
     if LaunchConfiguration('with_ros1_bridge').perform(context).lower() == 'true':
         retval.append( Node(

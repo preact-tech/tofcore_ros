@@ -1,6 +1,34 @@
 
 /tof_sensor:
   ros__parameters:
+    sensor_uri: /dev/ttyACM0
     flip_horizontal: false
     flip_vertical: false
     stream_type: distance_amplitude
+
+/tof_sensor_2:
+  ros__parameters:
+    sensor_uri: /dev/ttyACM2
+    flip_horizontal: false
+    flip_vertical: false
+    stream_type: distance_amplitude
+
+/tf:
+  x: 0
+  y: 0
+  z: 0
+  yaw: 0
+  pitch: 0
+  roll: 0
+  destination: base_footprint
+  source: /dev/ttyACM0
+                
+/tf_2:
+  x: 5
+  y: 0
+  z: 0
+  yaw: 0
+  pitch: 0
+  roll: 0
+  destination: base_footprint
+  source: /dev/ttyACM2

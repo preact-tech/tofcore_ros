@@ -48,7 +48,22 @@ ToFSensor::ToFSensor()
   rcl_interfaces::msg::ParameterDescriptor readonly_descriptor;
   readonly_descriptor.read_only = true;
 
-  interface_.reset(new tofcore::Sensor("/dev/ttyACM0"));
+  this->declare_parameter(SENSOR_URI, "-1");
+  rclcpp::Parameter uri_to_find;
+  (void)this->get_parameter(SENSOR_URI, uri_to_find);
+  if (uri_to_find.as_string() != "-1") // TODO: Find smarter way to do this check. We can decalre parameter without value and will get "not set" when querying, not sure how to leverage this?
+  {
+    interface_.reset(new tofcore::Sensor(uri_to_find.as_string()));
+    RCLCPP_INFO(this->get_logger(), "Sensor URI Provided, using device connection uri: \"%s\"", uri_to_find.as_string().c_str());
+    sensor_uri_ = uri_to_find.as_string();
+  }
+  else
+  {
+    std::vector<tofcore::device_info_t> devices = tofcore::find_all_devices(std::chrono::seconds(5), std::numeric_limits<int>::max());
+    interface_.reset(new tofcore::Sensor(devices.begin()->connector_uri));
+    RCLCPP_INFO(this->get_logger(), "No URI provided, using default device connection uri: \"%s\"", devices.begin()->connector_uri);
+    sensor_uri_ = devices.begin()->connector_uri;
+  }
   interface_->stopStream();
 
   // Get sensor info
@@ -62,7 +77,7 @@ ToFSensor::ToFSensor()
     interface_->getLensInfo(rays_x, rays_y, rays_z);
     cartesianTransform_.initLensTransform(m_width, HEIGHT, rays_x, rays_y, rays_z);
   }
-  catch(...)
+  catch (...)
   {
     RCLCPP_FATAL(this->get_logger(), "Error reading lens info from sensor.");
   }
@@ -420,7 +435,7 @@ void ToFSensor::publish_tempData(const tofcore::Measurement_T &frame, const rclc
   {
     sensor_msgs::msg::Temperature tmp;
     tmp.header.stamp = stamp;
-    tmp.header.frame_id = this->sensor_location_;
+    tmp.header.frame_id = this->sensor_uri_;
     tmp.temperature = i;
     tmp.variance = 0;
     switch (count)
@@ -454,7 +469,7 @@ void ToFSensor::publish_amplData(const tofcore::Measurement_T &frame, rclcpp::Pu
 {
   sensor_msgs::msg::Image img;
   img.header.stamp = stamp;
-  img.header.frame_id = this->sensor_location_;
+  img.header.frame_id = this->sensor_uri_;
   img.height = static_cast<uint32_t>(frame.height());
   img.width = static_cast<uint32_t>(frame.width());
   img.encoding = sensor_msgs::image_encodings::MONO16;
@@ -471,7 +486,7 @@ void ToFSensor::publish_ambientData(const tofcore::Measurement_T &frame, rclcpp:
 {
   sensor_msgs::msg::Image img;
   img.header.stamp = stamp;
-  img.header.frame_id = this->sensor_location_;
+  img.header.frame_id = this->sensor_uri_;
   img.height = static_cast<uint32_t>(frame.height());
   img.width = static_cast<uint32_t>(frame.width());
   img.encoding = sensor_msgs::image_encodings::MONO16;
@@ -488,7 +503,7 @@ void ToFSensor::publish_distData(const tofcore::Measurement_T &frame, rclcpp::Pu
 {
   sensor_msgs::msg::Image img;
   img.header.stamp = stamp;
-  img.header.frame_id = this->sensor_location_;
+  img.header.frame_id = this->sensor_uri_;
   img.height = static_cast<uint32_t>(frame.height());
   img.width = static_cast<uint32_t>(frame.width());
   img.encoding = sensor_msgs::image_encodings::MONO16;
@@ -505,12 +520,12 @@ void ToFSensor::publish_pointCloud(const tofcore::Measurement_T &frame, rclcpp::
 {
   sensor_msgs::msg::PointCloud2 cloud_msg{};
   cloud_msg.header.stamp = stamp;
-  cloud_msg.header.frame_id = this->sensor_location_;
+  cloud_msg.header.frame_id = this->sensor_uri_;
   cloud_msg.is_dense = true;
   cloud_msg.is_bigendian = false;
   tofcore_msgs::msg::IntegrationTime integration_msg{};
   integration_msg.header.stamp = stamp;
-  integration_msg.header.frame_id = this->sensor_location_;
+  integration_msg.header.frame_id = this->sensor_uri_;
   // Adding this to the message for the auto exposure node
   // Need to check if it exists because this is optional value
   if (frame.integration_time())
@@ -619,7 +634,7 @@ void ToFSensor::publish_DCSData(const tofcore::Measurement_T &frame, const rclcp
     {
       sensor_msgs::msg::Image img;
       img.header.stamp = stamp;
-      img.header.frame_id = this->sensor_location_;
+      img.header.frame_id = this->sensor_uri_;
       img.height = static_cast<uint32_t>(frame.height());
       // RCLCPP_INFO(this->get_logger(), "Frame Height: %d", frame.height());
 

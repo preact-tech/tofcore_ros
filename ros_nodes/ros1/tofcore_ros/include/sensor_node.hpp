@@ -55,6 +55,8 @@ private:
   // dynamic_reconfigure::Server<tofcore_ros1::tofcoreConfig>::CallbackType f_;
   tofcore_ros1::tofcoreConfig oldConfig_;
   dynamic_reconfigure::Server<tofcore_ros1::tofcoreConfig> *server_;
+  std::string sensor_uri_;
+
   // Filter parameters
   bool median_filter;
   int median_kernel = 3;

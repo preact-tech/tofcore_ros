@@ -16,7 +16,7 @@ constexpr auto API_VERSION = "/tof_sensor/api_version";
 constexpr auto CHIP_ID = "/tof_sensor/chip_id";
 constexpr auto MODEL_NAME = "/tof_sensor/model_name";
 constexpr auto SW_VERSION = "/tof_sensor/sw_version";
-constexpr auto SENSOR_URL = "/tof_sensor/sensor_url";
+constexpr auto SENSOR_URI = "/tof_sensor/sensor_uri";
 
 // Configurable params
 constexpr auto CAPTURE_MODE = "/tof_sensor/capture_mode";
@@ -86,6 +86,9 @@ cv::Mat neighbour_mask(const cv::Mat &mask, int neighbour_support)
 
   return mask_new;
 }
+std::string split_uri(std::string const & source) {
+    return source.substr(source.find_last_of("/") + 1);
+}
 
 ToFSensor::ToFSensor(ros::NodeHandle nh)
 {
@@ -114,28 +117,44 @@ ToFSensor::ToFSensor(ros::NodeHandle nh)
   sensor_temperature_bl = this->n_.advertise<sensor_msgs::Temperature>("sensor_temperature_bl", pub_queue);
   sensor_temperature_br = this->n_.advertise<sensor_msgs::Temperature>("sensor_temperature_br", pub_queue);
 
-  std::vector<tofcore::device_info_t> devices = tofcore::find_all_devices(std::chrono::seconds(5), std::numeric_limits<int>::max());
-  interface_.reset(new tofcore::Sensor(devices.begin()->connector_uri));
-
-  // interface_->stopStream();
-
   dynamic_reconfigure::Server<tofcore_ros1::tofcoreConfig>::CallbackType f_ = boost::bind(&ToFSensor::on_set_parameters_callback, this, boost::placeholders::_1, boost::placeholders::_2);
   server_ = new dynamic_reconfigure::Server<tofcore_ros1::tofcoreConfig>(this->config_mutex, this->n_);
-  server_->setCallback(f_);
+  // Setup ROS parameters
+  tofcore_ros1::tofcoreConfig config;
+  //server_->getConfigDefault(config);
+  config.__fromServer__(n_);
+  server_->updateConfig(config);
 
+  std::string uri_to_find = config.sensor_uri;
+
+
+  if (uri_to_find != "-1") // TODO: Find smarter way to do this check. We can decalre parameter without value and will get "not set" when querying, not sure how to leverage this?
+  {
+    interface_.reset(new tofcore::Sensor(uri_to_find));
+    ROS_INFO("Sensor URI Provided, using device connection uri: \"%s\"", uri_to_find.c_str());
+    sensor_uri_ = split_uri(uri_to_find);
+  }
+  else
+  {
+    std::vector<tofcore::device_info_t> devices = tofcore::find_all_devices(std::chrono::seconds(5), std::numeric_limits<int>::max());
+    interface_.reset(new tofcore::Sensor(devices.begin()->connector_uri));
+    ROS_INFO("No URI provided, using default device connection uri: \"%s\"", devices.begin()->connector_uri.c_str());
+    sensor_uri_ = split_uri(devices.begin()->connector_uri);
+  }
+
+  // interface_->stopStream();
+  server_->setCallback(f_);
 
   try
   {
     interface_->getLensInfo(rays_x, rays_y, rays_z);
     cartesianTransform_.initLensTransform(m_width, HEIGHT, rays_x, rays_y, rays_z);
   }
-  catch(...)
+  catch (...)
   {
     ROS_FATAL("Error reading lens info from sensor.");
   }
-  // Setup ROS parameters
-  tofcore_ros1::tofcoreConfig config;
-  server_->getConfigDefault(config);
+
   // server_->getConfigMin(this->oldConfig_);
 
   // Get sensor info
@@ -361,35 +380,35 @@ void ToFSensor::on_set_parameters_callback(tofcore_ros1::tofcoreConfig &config, 
     else if (parameter == AE_TARGET_MEAN_AMP && config.ae_target_mean_amp != this->oldConfig_.ae_target_mean_amp)
     {
       float value = config.ae_target_mean_amp;
-      ROS_INFO("Handling parameter \"%s\" : %f", parameter.c_str(), value );
+      ROS_INFO("Handling parameter \"%s\" : %f", parameter.c_str(), value);
       this->ae_target_mean_amp = value;
       this->oldConfig_.ae_target_mean_amp = config.ae_target_mean_amp;
     }
     else if (parameter == AE_TARGET_EXP_AVG_ALPHA && config.ae_target_exp_avg_alpha != this->oldConfig_.ae_target_exp_avg_alpha)
     {
       float value = config.ae_target_exp_avg_alpha;
-      ROS_INFO("Handling parameter \"%s\" : %f", parameter.c_str(), value );
+      ROS_INFO("Handling parameter \"%s\" : %f", parameter.c_str(), value);
       this->ae_target_exp_avg_alpha = value;
       this->oldConfig_.ae_target_exp_avg_alpha = config.ae_target_exp_avg_alpha;
     }
     else if (parameter == AE_RC_SPEED_FACTOR && config.ae_rc_speed_factor != this->oldConfig_.ae_rc_speed_factor)
     {
       float value = config.ae_rc_speed_factor;
-      ROS_INFO("Handling parameter \"%s\" : %f", parameter.c_str(), value );
+      ROS_INFO("Handling parameter \"%s\" : %f", parameter.c_str(), value);
       this->ae_rc_speed_factor = value;
       this->oldConfig_.ae_rc_speed_factor = config.ae_rc_speed_factor;
     }
     else if (parameter == AE_RC_SPEED_FACTOR_FAST && config.ae_rc_speed_factor_fast != this->oldConfig_.ae_rc_speed_factor_fast)
     {
       float value = config.ae_rc_speed_factor_fast;
-      ROS_INFO("Handling parameter \"%s\" : %f", parameter.c_str(), value );
+      ROS_INFO("Handling parameter \"%s\" : %f", parameter.c_str(), value);
       this->ae_rc_speed_factor_fast = value;
       this->oldConfig_.ae_rc_speed_factor_fast = config.ae_rc_speed_factor_fast;
     }
     else if (parameter == AE_RC_REL_ERROR_THRESH && config.ae_rc_rel_error_thresh != this->oldConfig_.ae_rc_rel_error_thresh)
     {
       float value = config.ae_rc_rel_error_thresh;
-      ROS_INFO("Handling parameter \"%s\" : %f", parameter.c_str(), value );
+      ROS_INFO("Handling parameter \"%s\" : %f", parameter.c_str(), value);
       this->ae_rc_rel_error_thresh = value;
       this->oldConfig_.ae_rc_rel_error_thresh = config.ae_rc_rel_error_thresh;
     }
@@ -676,7 +695,7 @@ void ToFSensor::publish_tempData(const tofcore::Measurement_T &frame, const ros:
   {
     sensor_msgs::Temperature tmp;
     tmp.header.stamp = stamp;
-    tmp.header.frame_id = "base_link";
+    tmp.header.frame_id = sensor_uri_;
     tmp.temperature = i;
     tmp.variance = 0;
     switch (count)
@@ -710,7 +729,7 @@ void ToFSensor::publish_amplData(const tofcore::Measurement_T &frame, ros::Publi
 {
   sensor_msgs::Image img;
   img.header.stamp = stamp;
-  img.header.frame_id = "base_link";
+  img.header.frame_id = sensor_uri_;
   img.height = static_cast<uint32_t>(frame.height());
   img.width = static_cast<uint32_t>(frame.width());
   img.encoding = sensor_msgs::image_encodings::MONO16;
@@ -727,7 +746,7 @@ void ToFSensor::publish_ambientData(const tofcore::Measurement_T &frame, ros::Pu
 {
   sensor_msgs::Image img;
   img.header.stamp = stamp;
-  img.header.frame_id = "base_link";
+  img.header.frame_id = sensor_uri_;
   img.height = static_cast<uint32_t>(frame.height());
   img.width = static_cast<uint32_t>(frame.width());
   img.encoding = sensor_msgs::image_encodings::MONO16;
@@ -744,7 +763,7 @@ void ToFSensor::publish_distData(const tofcore::Measurement_T &frame, ros::Publi
 {
   sensor_msgs::Image img;
   img.header.stamp = stamp;
-  img.header.frame_id = "base_link";
+  img.header.frame_id = sensor_uri_;
   img.height = static_cast<uint32_t>(frame.height());
   img.width = static_cast<uint32_t>(frame.width());
   img.encoding = sensor_msgs::image_encodings::MONO16;
@@ -761,9 +780,9 @@ void ToFSensor::publish_pointCloud(const tofcore::Measurement_T &frame, ros::Pub
 {
   tofcore_ros1::TofcorePointCloud2 cloud_msg{};
   cloud_msg.header.stamp = stamp;
-  cloud_msg.header.frame_id = "base_link";
+  cloud_msg.header.frame_id = sensor_uri_;
   cloud_msg.point_cloud.header.stamp = stamp;
-  cloud_msg.point_cloud.header.frame_id = "base_link";
+  cloud_msg.point_cloud.header.frame_id = sensor_uri_;
   cloud_msg.point_cloud.is_dense = true;
   cloud_msg.point_cloud.is_bigendian = false;
 
@@ -946,9 +965,9 @@ void ToFSensor::publish_pointCloudHDR(const tofcore::Measurement_T &frame, ros::
 
   tofcore_ros1::TofcorePointCloud2 cloud_msg{};
   cloud_msg.header.stamp = stamp;
-  cloud_msg.header.frame_id = "base_link";
+  cloud_msg.header.frame_id = sensor_uri_;
   cloud_msg.point_cloud.header.stamp = stamp;
-  cloud_msg.point_cloud.header.frame_id = "base_link";
+  cloud_msg.point_cloud.header.frame_id = sensor_uri_;
   cloud_msg.point_cloud.is_dense = true;
   cloud_msg.point_cloud.is_bigendian = false;
 
@@ -1075,7 +1094,7 @@ void ToFSensor::publish_pointCloudHDR(const tofcore::Measurement_T &frame, ros::
 
   sensor_msgs::Image dist_img;
   dist_img.header.stamp = stamp;
-  dist_img.header.frame_id = "base_link";
+  dist_img.header.frame_id = sensor_uri_;
   dist_img.height = static_cast<uint32_t>(frame_height);
   dist_img.width = static_cast<uint32_t>(frame_width);
   dist_img.encoding = sensor_msgs::image_encodings::MONO16;
@@ -1090,7 +1109,7 @@ void ToFSensor::publish_pointCloudHDR(const tofcore::Measurement_T &frame, ros::
 
   sensor_msgs::Image amp_img;
   amp_img.header.stamp = stamp;
-  amp_img.header.frame_id = "base_link";
+  amp_img.header.frame_id = sensor_uri_;
   amp_img.height = static_cast<uint32_t>(frame_height);
   amp_img.width = static_cast<uint32_t>(frame_width);
   amp_img.encoding = sensor_msgs::image_encodings::MONO16;
@@ -1122,7 +1141,7 @@ void ToFSensor::publish_DCSData(const tofcore::Measurement_T &frame, const ros::
     {
       sensor_msgs::Image img;
       img.header.stamp = stamp;
-      img.header.frame_id = "base_link";
+      img.header.frame_id = sensor_uri_;
       img.height = static_cast<uint32_t>(frame.height());
       // ROS_INFO( "Frame Height: %d", frame.height());
 
@@ -1233,8 +1252,8 @@ void ToFSensor::process_ae(short unsigned int integration_time_us, cv::Mat &ampi
 float ToFSensor::measure_from_avg(cv::Mat ampimg, int int_us)
 {
   cv::Scalar amp_measure;
-  cv::Rect roi(this->ae_roi_x, this->ae_roi_y, this->ae_roi_width , this->ae_roi_height); // x,y,width,height
-  cv::Mat amp_roi ;
+  cv::Rect roi(this->ae_roi_x, this->ae_roi_y, this->ae_roi_width, this->ae_roi_height); // x,y,width,height
+  cv::Mat amp_roi;
   try
   {
     amp_roi = ampimg(roi);
@@ -1317,7 +1336,7 @@ void ToFSensor::ae_watchdog()
   {
     int new_integration;
     this->ae_integrations.take(new_integration);
-    ROS_INFO("Automatic Exposure setting integration time to: %d",new_integration );
+    ROS_INFO("Automatic Exposure setting integration time to: %d", new_integration);
 
     config_lock.lock();
     tofcore_ros1::tofcoreConfig config = this->oldConfig_;
@@ -1325,8 +1344,8 @@ void ToFSensor::ae_watchdog()
     interface_->setIntegrationTime(new_integration);
     config_lock.unlock();
 
-    //boost::recursive_mutex::scoped_lock lock(this->config_mutex);
-    //server_->updateConfig(config);
+    // boost::recursive_mutex::scoped_lock lock(this->config_mutex);
+    // server_->updateConfig(config);
   }
 }
 std::thread ToFSensor::spawn_ae_update()

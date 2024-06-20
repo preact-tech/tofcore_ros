@@ -30,3 +30,11 @@ cd ros2
 source ./install/setup.bash
 ros2 launch tof_sensor tofcore.launch.py
 ```
+
+Two stream two sensors simultaneously use the following launch file:
+
+```
+cd ros2
+source ./install/setup.bash
+ros2 launch tof_sensor tofcore_dual.launch.py
+```
