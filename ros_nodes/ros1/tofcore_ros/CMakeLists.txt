@@ -21,11 +21,8 @@ find_package( OpenCV REQUIRED )
 
 ## System dependencies are found with CMake's conventions
 # find_package(Boost REQUIRED COMPONENTS system)
-# set(GTEST_LIBRARY "$ENV{GTEST_LIBRARY}")
-# set(GTEST_MAIN_LIBRARY "$ENV{GTEST_LIBRARY}")
-find_package(GTest REQUIRED)
-include_directories(${GTEST_INCLUDE_DIRS})
-include_directories("$ENV{GMOCK_DIR}/include")
+
+
 
 find_package(ToFCore QUIET)
 if(NOT TARGET ToFCore::ToFCore)
