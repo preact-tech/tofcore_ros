@@ -22,10 +22,16 @@ make ros1
 
 ### Testing
 
-One run the node by running the following commands: 
-
+Stream a single sensor with the following command:
 ```
 cd ros1
 source ./install/setup.bash
 roslaunch ros1/tofcore_ros/launch/tofcore.launch 
+```
+
+Stream two sensor with the following command:
+```
+cd ros1
+source ./install/setup.bash
+roslaunch ros1/tofcore_ros/launch/tofcore_dual.launch 
 ```
