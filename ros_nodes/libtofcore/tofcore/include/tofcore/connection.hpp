@@ -1,6 +1,7 @@
 #if !defined(_TOFCORE_COMMS_HPP)
 #define _TOFCORE_COMMS_HPP
 
+#include "CommandTypes.hpp"
 #if __cplusplus >= 202002L
 #   include <span>
 #else
@@ -12,10 +13,14 @@
 #include <functional>
 #include <memory>
 #include <optional>
+#include <string>
+#include <tuple>
 #include <vector>
 
 namespace tofcore
 {
+
+typedef std::function<std::tuple<bool, std::string> (const uint16_t cmdId, const bool verbose)> cmd_descr_callback_t;
 
 class Connection_T
 {
@@ -31,14 +36,18 @@ public:
     virtual void send(uint16_t command, const uint8_t *data, uint32_t size) = 0;
     virtual void send(uint16_t command, const std::vector<uint8_t> &buf) = 0;
 
-    virtual std::optional<std::vector<std::byte> > send_receive(uint16_t command, const std::vector<ScatterGatherElement> &data,
-                                                         std::chrono::steady_clock::duration timeout) = 0;
+    virtual std::optional<std::vector<std::byte> > send_receive(uint16_t command,
+                                                                const std::vector<ScatterGatherElement> &data,
+                                                                std::chrono::steady_clock::duration timeout) = 0;
 
-    virtual std::optional<std::vector<std::byte> > send_receive(uint16_t command, const std::vector<uint8_t> &buf,
-                                                         std::chrono::steady_clock::duration timeout) = 0;
+    virtual std::optional<std::vector<std::byte> > send_receive(uint16_t command,
+                                                                const std::vector<uint8_t> &buf,
+                                                                std::chrono::steady_clock::duration timeout) = 0;
 
-    virtual std::optional<std::vector<std::byte> > send_receive(uint16_t command, const uint8_t *data, uint32_t size,
-                                                         std::chrono::steady_clock::duration timeout) = 0;
+    virtual std::optional<std::vector<std::byte> > send_receive(uint16_t command,
+                                                                const uint8_t *data,
+                                                                uint32_t size,
+                                                                std::chrono::steady_clock::duration timeout) = 0;
 
     virtual void reset_parser() = 0;
 
@@ -49,8 +58,10 @@ public:
     /// @param io service object that manages the context the connection will run under
     /// @param uri_str URI specifing how to connect to the device to communicate with.
     /// @return 
-    static std::unique_ptr<Connection_T> create(boost::asio::io_service& io, const std::string& uri);
-
+    static std::unique_ptr<Connection_T> create(boost::asio::io_service& io,
+                                                const std::string& uri,
+                                                log_callback_t log_callback = nullptr,
+                                                cmd_descr_callback_t cmd_descr_callback = nullptr);
 }; //end class Connection_T
 
 } //end namespace tofcore

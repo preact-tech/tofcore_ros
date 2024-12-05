@@ -5,21 +5,26 @@
  *
  * Test program for changing VSM after starting streaming.
  */
+#include "dbg_out.hpp"
+#include "po_count.hpp"
 #include "tofcore/tof_sensor.hpp"
 #include <atomic>
 #include <chrono>
 #include <csignal>
 #include <iomanip>
-#include <iostream>
-#include <boost/program_options.hpp>
 #include <thread>
 
 using namespace std::chrono_literals;
 using namespace std::chrono;
+using namespace test;
 using namespace TofComm;
 using namespace tofcore;
 
+static DebugOutput dbg_out {};
+static ErrorOutput err_out {};
+
 static uint32_t baudRate { DEFAULT_BAUD_RATE };
+static uint32_t debugLevel { 0 };
 static uint32_t delayAfterStart { 0 };
 static std::string devicePort { DEFAULT_PORT_NAME };
 static volatile bool exitRequested { false };
@@ -54,36 +59,37 @@ static void measurement_callback(std::shared_ptr<tofcore::Measurement_T> pData)
         case DataType::DISTANCE_AMPLITUDE:
             ++amplitudeCount;
             ++distanceCount;
-            std::cout << "[" << framePeriod.count() << "] DISTANCE-AMPLITUDE measurement data, packet size "
-                      << (pData->pixel_buffer().size()) << "; integration time = " << integration_time << " uS" << std::endl;
+            dbg_out << "[" << framePeriod.count() << "] DISTANCE-AMPLITUDE measurement data, packet size "
+                      << (pData->pixel_buffer().size()) << "; integration time = " << integration_time << " uS\n";
             break;
         case DataType::DCS:
             ++dcsCount;
-            std::cout << "[" << framePeriod.count() << "] DCS measurement data, packet size " << pData->pixel_buffer().size() << std::endl;
+            dbg_out << "[" << framePeriod.count() << "] DCS measurement data, packet size " << pData->pixel_buffer().size() << "\n";
             break;
         case DataType::DISTANCE:
             ++distanceCount;
-            std::cout << "[" << framePeriod.count() << "] DISTANCE measurement data, packet size " << pData->pixel_buffer().size() << std::endl;
+            dbg_out << "[" << framePeriod.count() << "] DISTANCE measurement data, packet size " << pData->pixel_buffer().size() << "\n";
             break;
         case DataType::AMPLITUDE:
             ++amplitudeCount;
-            std::cout << "[" << framePeriod.count() << "] AMPLITUDE measurement data, packet size "
-                        << (pData->pixel_buffer().size()) << std::endl;
+            dbg_out << "[" << framePeriod.count() << "] AMPLITUDE measurement data, packet size "
+                        << (pData->pixel_buffer().size()) << "\n";
             break;
         case DataType::AMBIENT:
-            ++ambientCount;
-            std::cout << "[" << framePeriod.count() << "] AMBIENT measurement data, packet size "
-                          << (pData->pixel_buffer().size()) << std::endl;
+        case DataType::GRAYSCALE:
+           ++ambientCount;
+            dbg_out << "[" << framePeriod.count() << "] AMBIENT measurement data, packet size "
+                          << (pData->pixel_buffer().size()) << "\n";
             break;
         case DataType::DCS_DIFF_AMBIENT:
             ++ambientCount;
             ++dcsDiffCount;
-            std::cout << "[" << framePeriod.count() << "] DCS_DIFF+AMBIENT measurement data, packet size "
-                      << (pData->pixel_buffer().size()) << std::endl;
+            dbg_out << "[" << framePeriod.count() << "] DCS_DIFF+AMBIENT measurement data, packet size "
+                      << (pData->pixel_buffer().size()) << "\n";
             break;
 
         default:
-            std::cout << "[" << framePeriod.count() << "] UNRECOGNIZED data type: " << static_cast<int16_t>(pData->type()) << std::endl;
+            dbg_out << "[" << framePeriod.count() << "] UNRECOGNIZED data type: " << static_cast<int16_t>(pData->type()) << "\n";
     }
 }
 
@@ -93,10 +99,12 @@ static void parseArgs(int argc, char *argv[])
     po::options_description desc("Get Lens Information Test");
     desc.add_options()
         ("baud-rate,b", po::value<uint32_t>(&baudRate)->default_value(DEFAULT_BAUD_RATE))
-        ("device-uri,p", po::value<std::string>(&devicePort))
+        ("debug,G", new  CountValue(&debugLevel),"Increase debug level of libtofcore")
         ("delay,D", po::value<uint32_t>(&delayAfterStart)->default_value(0), "Delay (mS) after start streaming")
+        ("device-uri,p", po::value<std::string>(&devicePort))
         ("help,h", "produce help message")
         ("once,o", po::value<bool>(&startStreamingOnce)->default_value(false), "Only start streaming once")
+        ("quiet,q", po::bool_switch(&dbg_out.quiet)->default_value(false), "Disable output")
         ;
 
     po::variables_map vm;
@@ -104,7 +112,7 @@ static void parseArgs(int argc, char *argv[])
     po::notify(vm);
 
     if (vm.count("help")) {
-        std::cout << desc << "\n";
+        dbg_out << desc << "\n";
         exit(0);
     }
 }
@@ -128,6 +136,7 @@ int main(int argc, char *argv[])
 #endif
     {
         tofcore::Sensor sensor { devicePort, baudRate };
+        sensor.setDebugLevel(debugLevel);
 
         VsmControl_T vsmControl { };
         vsmControl.m_numberOfElements = 2;
@@ -144,7 +153,7 @@ int main(int argc, char *argv[])
             {
                 if (!sensor.streamDCSAmbient())
                 {
-                    std::cerr << "\nstreamDCSAmbient() FAILED\n";
+                    err_out << "\nstreamDCSAmbient() FAILED\n";
                     break;
                 }
                 if (startStreamingOnce)
@@ -159,10 +168,10 @@ int main(int argc, char *argv[])
             }
             if (!sensor.setVsm(vsmControl))
             {
-                std::cerr << "\nsetVsm() FAILED\n";
+                err_out << "\nsetVsm() FAILED\n";
                 break;
             }
-            std::cout << "\nVSM set\n\n";
+            dbg_out << "\nVSM set\n\n";
             if (!startStreamingOnce)
             {
                 sensor.stopStream();

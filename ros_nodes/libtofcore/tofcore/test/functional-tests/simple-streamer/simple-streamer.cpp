@@ -1,38 +1,46 @@
 /**
  * @file simple-streamer.cpp
  *
- * Copyright 2023 PreAct Technologies
+ * Copyright 2024 PreAct Technologies
  *
- * Test program that uses libtofcore to stream DCS or DCS+Ambient data
+ * Test program that uses libtofcore to stream data
  */
+#include "dbg_out.hpp"
+#include "po_count.hpp"
 #include "tofcore/tof_sensor.hpp"
 #include <atomic>
 #include <chrono>
 #include <csignal>
-#include <iostream>
 #include <iomanip>
 #include <thread>
-#include <boost/program_options.hpp>
-
 
 using namespace std::chrono_literals;
 using namespace std::chrono;
+using namespace test;
 using namespace tofcore;
 using namespace TofComm;
+
+static DebugOutput dbg_out {};
+static ErrorOutput err_out {};
 
 static uint32_t baudRate { DEFAULT_BAUD_RATE };
 static bool captureAmbient { false };
 static bool captureAmplitude { false };
 static bool captureDcsDiff { false };
 static bool captureDistance { false };
+static uint32_t crcState { 0 };
+static uint32_t debugLevel { 0 };
 static std::string devicePort { DEFAULT_PORT_NAME };
 static bool enableBinning { false };
 static volatile bool exitRequested { false };
-static size_t verbosity { 0 };
+static uint32_t verbosity { 0 };
 static uint16_t modulation { 0 };
 static uint16_t integration_time { 0 };
 static bool setFramePeriod { false };
 static uint32_t framePeriodMs { 1000 };
+
+static bool setSortingState { false };
+static bool sortRawData { true };
 
 static std::atomic<uint32_t> ambientCount;
 static std::atomic<uint32_t> amplitudeCount;
@@ -57,8 +65,8 @@ static void measurement_callback(std::shared_ptr<tofcore::Measurement_T> pData)
             ++distanceCount;
             if (verbosity > 0)
             {
-                std::cout << "[" << framePeriod.count() << "] DISTANCE-AMPLITUDE measurement data, packet size "
-                          << (pData->pixel_buffer().size()) << std::endl;
+                dbg_out << "[" << framePeriod.count() << "] DISTANCE-AMPLITUDE measurement data, packet size "
+                        << (pData->pixel_buffer().size()) << "\n";
                 auto distanceData = pData->distance();
                 uint32_t adcErrors { 0 };
                 uint32_t amplitudeErrors { 0 };
@@ -95,9 +103,9 @@ static void measurement_callback(std::shared_ptr<tofcore::Measurement_T> pData)
                         ++goodPixels;
                     }
                 }
-                std::cout << "\tGood pixels: " << goodPixels << "; Errors: " << pixelErrors
-                          << "; amplitude: " << amplitudeErrors << "; saturated: " << saturatedPixels
-                          << "; ADC: " << adcErrors << "\n";
+                dbg_out << "\tGood pixels: " << goodPixels << "; Errors: " << pixelErrors
+                        << "; amplitude: " << amplitudeErrors << "; saturated: " << saturatedPixels
+                        << "; ADC: " << adcErrors << "\n";
 
             }
             break;
@@ -105,30 +113,33 @@ static void measurement_callback(std::shared_ptr<tofcore::Measurement_T> pData)
             ++dcsCount;
             if (verbosity > 0)
             {
-                std::cout << "[" << framePeriod.count() << "] DCS measurement data, packet size " << pData->pixel_buffer().size() << std::endl;
+                dbg_out << "[" << framePeriod.count() << "] DCS measurement data, packet size "
+                        << pData->pixel_buffer().size() << "\n";
             }
             break;
         case DataType::DISTANCE:
             ++distanceCount;
             if (verbosity > 0)
             {
-                std::cout << "[" << framePeriod.count() << "] DISTANCE measurement data, packet size " << pData->pixel_buffer().size() << std::endl;
+                dbg_out << "[" << framePeriod.count() << "] DISTANCE measurement data, packet size "
+                        << pData->pixel_buffer().size() << "\n";
             }
             break;
         case DataType::AMPLITUDE:
             ++amplitudeCount;
             if (verbosity > 0)
             {
-                std::cout << "[" << framePeriod.count() << "] AMPLITUDE measurement data, packet size "
-                          << (pData->pixel_buffer().size()) << std::endl;
+                dbg_out << "[" << framePeriod.count() << "] AMPLITUDE measurement data, packet size "
+                        << (pData->pixel_buffer().size()) << "\n";
             }
             break;
         case DataType::AMBIENT:
+        case DataType::GRAYSCALE:
             ++ambientCount;
             if (verbosity > 0)
             {
-                std::cout << "[" << framePeriod.count() << "] AMBIENT measurement data, packet size "
-                          << (pData->pixel_buffer().size()) << std::endl;
+                dbg_out << "[" << framePeriod.count() << "] AMBIENT measurement data, packet size "
+                        << (pData->pixel_buffer().size()) << "\n";
             }
             break;
         case DataType::DCS_DIFF_AMBIENT:
@@ -136,169 +147,154 @@ static void measurement_callback(std::shared_ptr<tofcore::Measurement_T> pData)
             ++dcsDiffCount;
             if (verbosity > 0)
             {
-                std::cout << "[" << framePeriod.count() << "] DCS_DIFF+AMBIENT measurement data, packet size "
-                          << (pData->pixel_buffer().size()) << std::endl;
+                dbg_out << "[" << framePeriod.count() << "] DCS_DIFF+AMBIENT measurement data, packet size "
+                        << (pData->pixel_buffer().size()) << "\n";
             }
             break;
 
         default:
-            std::cout << "[" << framePeriod.count() << "] UNRECOGNIZED data type: " << static_cast<int16_t>(pData->type()) << std::endl;
+            dbg_out << "[" << framePeriod.count() << "] UNRECOGNIZED data type: "
+                    << static_cast<int16_t>(pData->type()) << "\n";
     }
     if(verbosity > 0)
     {
         auto chip_temps = pData->sensor_temperatures();
         if(chip_temps) 
         {
-            std::cout << "  Sensor temperatures: " << (*chip_temps)[0] << ", " << (*chip_temps)[1] << ", "<< (*chip_temps)[2] << ", "<< (*chip_temps)[3] << std::endl;
+            dbg_out << "  Sensor temperatures: " << (*chip_temps)[0] << ", "
+                    << (*chip_temps)[1] << ", "<< (*chip_temps)[2] << ", "<< (*chip_temps)[3] << "\n";
         } 
         else 
         {
-            std::cout << "  No sensor temperature data" << std::endl;
+            dbg_out << "  No sensor temperature data\n";
         }
         auto integration_time = pData->integration_time();
         if(integration_time)
         {
-            std::cout << "  Integration time setting (uS): " << *integration_time << std::endl;
+            dbg_out << "  Integration time setting (uS): " << *integration_time << "\n";
         }
         else 
         {
-            std::cout << "  No integration time data" << std::endl;
+            dbg_out << "  No integration time data\n";
         }
         auto mod_frequency = pData->modulation_frequency();
         if(mod_frequency)
         {
-            std::cout << "  Modulation Frequency setting (Hz): " << *mod_frequency << std::endl;
+            dbg_out << "  Modulation Frequency setting (Hz): " << *mod_frequency << "\n";
         }
         else 
         {
-            std::cout << "  No modulation frequency data" << std::endl;
+            dbg_out << "  No modulation frequency data\n";
         }
         auto v_binning = pData->vertical_binning();
         auto h_binning = pData->horizontal_binning();
         if(v_binning && h_binning)
         {
-            std::cout << "  Binning settings: " << (int)(*h_binning) << " " << (int)(*v_binning) << std::endl;
+            dbg_out << "  Binning settings: " << (int)(*h_binning) << " " << (int)(*v_binning) << "\n";
         }
         else 
         {
-            std::cout << "  No binning data" << std::endl;
+            dbg_out << "  No binning data\n";
         }
 
         auto dll_settings = pData->dll_settings();
         if(dll_settings)
         {
-            std::cout << "  DLL settings: " << ((*dll_settings)[0] != 0 ? "True " : "False ") << (int)(*dll_settings)[1] << " " <<  (int)(*dll_settings)[2] << " " <<  (int)(*dll_settings)[3] << std::endl;
+            dbg_out << "  DLL settings: " << ((*dll_settings)[0] != 0 ? "True " : "False ")
+                    << (int)(*dll_settings)[1] << " " <<  (int)(*dll_settings)[2] << " " <<  (int)(*dll_settings)[3] << "\n";
         }
         else 
         {
-            std::cout << "  No DLL settings" << std::endl;
+            dbg_out << "  No DLL settings\n";
         }
         auto illum = pData->illuminator_info();
         if(illum)
         {
             const auto& illum_info = *illum;
-            std::cout << "  Illuminator info: 0x" << std::hex << (int)illum_info.led_segments_enabled << std::dec << " "
-                      << illum_info.temperature_c << "C " 
-                      <<  illum_info.vled_v << "V " 
-                      << illum_info.photodiode_v << "V" 
-                      << std::endl;
+            dbg_out << "  Illuminator info: 0x" << std::hex
+                    << (int)illum_info.led_segments_enabled << std::dec << " "
+                    << illum_info.temperature_c << "C "
+                    << illum_info.vled_v << "V "
+                    << illum_info.photodiode_v << "V\n";
         }
         else
         {
-            std::cout << "  No Illuminator information" << std::endl;
+            dbg_out << "  No Illuminator information\n";
         }
 
         auto vsmControl = pData->vsm_info();
         if(vsmControl)
         {
-            std::cout << "  VSM: Flags=" << vsmControl->m_vsmFlags << "; N = "
-                      << (unsigned)vsmControl->m_numberOfElements  << "; I = "
-                      << (unsigned)vsmControl->m_vsmIndex << ";";
+            dbg_out << "  VSM: Flags=" << vsmControl->m_vsmFlags << "; N = "
+                    << (unsigned)vsmControl->m_numberOfElements  << "; I = "
+                    << (unsigned)vsmControl->m_vsmIndex << ";";
             uint8_t numElements = std::min(vsmControl->m_numberOfElements, (uint8_t) VSM_MAX_NUMBER_OF_ELEMENTS);
             for (decltype(numElements) n = 0; n < numElements; ++n)
             {
                 VsmElement_T& element = vsmControl->m_elements[n];
-                std::cout << " [" << element.m_integrationTimeUs << ", " << element.m_modulationFreqKhz << "]";
+                dbg_out << " [" << element.m_integrationTimeUs << ", "
+                        << element.m_modulationFreqKhz << "]";
             }
-            std::cout << std::endl;
+            dbg_out << "\n";
         }
         else
         {
-            std::cout << "  No VSM data" << std::endl;
+            dbg_out << "  No VSM data\n";
         }
 
         auto timestamp = pData->frame_timestamp();
         if(timestamp)
         {
-            std::cout << "  Frame timestamp: " << (int) *timestamp << std::endl;
+            dbg_out << "  Frame timestamp: " << (int) *timestamp << "\n";
         }
         else
         {
-            std::cout << "No timestamp found in frame data" << std::endl;
+            dbg_out << "  No timestamp found in frame data\n";
         }
 
-        std::cout << "\n\n";
+        dbg_out << "  Sorted: " << pData->is_raw_data_sorted()
+                << "; HFlip: " << pData->is_flipped_horizontally()
+                << "; VFlip: " << pData->is_flipped_vertically() << "\n";
+
+        dbg_out << "\n\n";
     }
 }
-
-namespace po = boost::program_options;
-
-class CountValue : public po::typed_value<std::size_t>
-{
-public:
-    CountValue():
-        CountValue(nullptr)
-    {
-    }
-
-    CountValue(std::size_t* store):
-        po::typed_value<std::size_t>(store)
-    {
-        // Ensure that no tokens may be passed as a value.
-        default_value(0);
-        zero_tokens();
-    }
-
-private:
-
-    virtual void xparse(boost::any& store, const std::vector<std::string>& /*tokens*/) const
-    {
-        // Replace the stored value with the access count.
-        store = boost::any(++count_);
-    }
-
-    mutable std::size_t count_{ 0 };
-};
 
 static void parseArgs(int argc, char *argv[])
 {
     po::options_description desc("Simple Streamer Test");
     desc.add_options()
-        ("help,h", "produce help message")
-        ("device-uri,p", po::value<std::string>(&devicePort))
+        ("ambient,A", po::bool_switch(&captureAmbient), "Capture DCS+Ambient or Distance+Amplitude frames, (not just DCS or Distance)")
+        ("amplitude,a", po::bool_switch(&captureAmplitude), "Capture DCS+Ambient or Distance+Amplitude frames, (not just DCS or Distance)")
         ("baud-rate,b", po::value<uint32_t>(&baudRate)->default_value(DEFAULT_BAUD_RATE))
         ("Binning,B", po::bool_switch(&enableBinning)->default_value(false),"Enable full binning")
-        ("amplitude,a", po::bool_switch(&captureAmplitude), "Capture DCS+Ambient or Distance+Amplitude frames, (not just DCS or Distance)")
-        ("ambient,A", po::bool_switch(&captureAmbient), "Capture DCS+Ambient or Distance+Amplitude frames, (not just DCS or Distance)")
-        ("distance,d", po::bool_switch(&captureDistance),  "Capture distance (or amplitude) frames instead of DCS frames")
+        ("crc-state,C", new CountValue(&crcState), "Increase frame CRC state")
         ("Dcs-diff,D", po::bool_switch(&captureDcsDiff),  "Capture DCS_DIFF + Ambient frames")
-        ("modulation,m", po::value<uint16_t>(&modulation)->default_value(0),"Set modulation frequency to this value (kHz)")
-        ("integration,i", po::value<uint16_t>(&integration_time)->default_value(0),"Set integration time to this value (uS)")
+        ("debug,G", new  CountValue(&debugLevel),"Increase debug level of libtofcore")
+        ("device-uri,p", po::value<std::string>(&devicePort))
+        ("distance,d", po::bool_switch(&captureDistance),  "Capture distance (or amplitude) frames instead of DCS frames")
         ("frame-period,f", po::value<uint32_t>(&framePeriodMs),"Set target frame period (mS)")
-        ("verbose,V",               
-           new  CountValue(&verbosity),
-            "Increase verbosity of output")
+        ("help,h", "produce help message")
+        ("integration,i", po::value<uint16_t>(&integration_time)->default_value(0),"Set integration time to this value (uS)")
+        ("modulation,m", po::value<uint16_t>(&modulation)->default_value(0),"Set modulation frequency to this value (kHz)")
+        ("quiet,q", po::bool_switch(&dbg_out.quiet)->default_value(false), "Disable output")
+        ("sort,s", po::value<bool>(&sortRawData), "Sort raw data")
+        ("verbose,V", new  CountValue(&verbosity), "Increase verbosity of output")
         ;
 
     po::variables_map vm;
     po::store(po::parse_command_line(argc, argv, desc), vm);
     po::notify(vm);
+    if (vm.count("sort"))
+    {
+        setSortingState = true;
+    }
     if (vm.count("frame-period"))
     {
         setFramePeriod = true;
     }
     if (vm.count("help")) {
-        std::cout << desc << "\n";
+        dbg_out << desc << "\n";
         exit(0);
     }
 }
@@ -317,7 +313,7 @@ int main(int argc, char *argv[])
     }
     catch (po::error &x)
     {
-        std::cerr << x.what() << std::endl;
+        err_out << x.what() << "\n";
         return 1;
     }
     /*
@@ -330,6 +326,34 @@ int main(int argc, char *argv[])
     #endif
     {
         tofcore::Sensor sensor { devicePort, baudRate };
+        sensor.setDebugLevel(debugLevel);
+
+        if (sensor.setFrameCrcState(crcState))
+        {
+            dbg_out << "Frame CRC state set to " << crcState << "\n";
+        }
+        else
+        {
+            err_out << "FAILED to set frame CRC state set to " << crcState << "\n";
+        }
+
+        if (setSortingState)
+        {
+            sensor.sortRawData(sortRawData);
+            dbg_out << "Configured RAW data sorting: " << (sortRawData ? "ON" : "OFF") << "\n";
+        }
+        else
+        {
+            auto sortState = sensor.isRawDataSorted();
+            if (sortState)
+            {
+                dbg_out << "RAW data sorting: " << (*sortState ? "ON" : "OFF") << "\n";
+            }
+            else
+            {
+                err_out << "Unable to get state of RAW data sorting\n";
+            }
+        }
 
         if (enableBinning)
         {
@@ -353,7 +377,7 @@ int main(int argc, char *argv[])
         {
             if (!sensor.setFramePeriodMs(framePeriodMs))
             {
-                std::cerr << "FAILED to set frame period to " << framePeriodMs << " mS\n";
+                err_out << "FAILED to set frame period to " << framePeriodMs << " mS\n";
             }
         }
 
@@ -361,28 +385,32 @@ int main(int argc, char *argv[])
         if (framePeriodData)
         {
             auto [framePeriodMs, framePeriodMsMin, framePeriodMsMax] = *framePeriodData;
-            std::cout << "Frame Period: " << framePeriodMs << " mS; Min: " << framePeriodMsMin
-                      << " mS; Max: " << framePeriodMsMax << " mS\n";
+            dbg_out << "Frame Period: " << framePeriodMs << " mS; Min: " << framePeriodMsMin
+                    << " mS; Max: " << framePeriodMsMax << " mS\n";
         }
         else
         {
-            std::cerr << "FAILED to get frame period data\n";
+            err_out << "FAILED to get frame period data\n";
         }
 
         sensor.subscribeMeasurement(&measurement_callback); // callback is called from background thread
+        uint32_t rawFramesPerRangeFrame { 1 };
         if (captureDcsDiff)
         {
             sensor.streamDCSDiffAmbient();
+            rawFramesPerRangeFrame = 3;
         }
         else if (captureDistance)
         {
             if (captureAmbient || captureAmplitude)
             {
                 sensor.streamDistanceAmplitude();
+                rawFramesPerRangeFrame = 2;
             }
             else
             {
                 sensor.streamDistance();
+                rawFramesPerRangeFrame = 1;
             }
         }
         else
@@ -390,18 +418,24 @@ int main(int argc, char *argv[])
             if (captureAmbient || captureAmplitude)
             {
                 sensor.streamDCSAmbient();
+                rawFramesPerRangeFrame = 5;
             }
             else
             {
                 sensor.streamDCS();
+                rawFramesPerRangeFrame = 4;
             }
         }
-        auto lastTime = steady_clock::now();
+
+        auto startTime { high_resolution_clock::now() };
+        auto lastTime { startTime };
         uint32_t outputCount = 1;
+        uint32_t totalFrames { 0 };
         while (!exitRequested) // wait for ^\ or ^C
         {
             std::this_thread::sleep_until(lastTime + 1000ms);
-            lastTime = steady_clock::now();
+            lastTime = high_resolution_clock::now();
+            duration<double> totalTime { duration_cast<duration<double>>(lastTime - startTime) };
             const uint32_t ambient { ambientCount };
             ambientCount = 0;
             const uint32_t amplitude { amplitudeCount };
@@ -412,16 +446,18 @@ int main(int argc, char *argv[])
             dcsDiffCount = 0;
             const uint32_t distance { distanceCount };
             distanceCount = 0;
-            std::cout << "[" << std::setw(5) << std::setfill('0') << outputCount
-                      <<"] FPS: ambient = " << std::setw(2) << ambient
-                      << "; amplitude = " << std::setw(2) << amplitude
-                      << "; dcs = " << std::setw(2) << dcs
-                      << "; dcsDiff = " << std::setw(2) << dcsDiff
-                      << "; distance = " << std::setw(2) << distance
-                      << "; total = " << std::setw(3) << (ambient + amplitude + dcs + dcsDiff + distance) << std::endl;
+            totalFrames += (ambient + amplitude + dcs + dcsDiff + distance);
+            dbg_out << "[" << std::setw(5) << std::setfill('0') << outputCount
+                    <<"] Frames: ambient = " << std::setw(2) << ambient
+                    << "; amplitude = " << std::setw(2) << amplitude
+                    << "; dcs = " << std::setw(2) << dcs
+                    << "; dcsDiff = " << std::setw(2) << dcsDiff
+                    << "; distance = " << std::setw(2) << distance
+                    << "; total = " << std::setw(3) << (ambient + amplitude + dcs + dcsDiff + distance)
+                    << "; FPS: " << (totalFrames / totalTime.count() / rawFramesPerRangeFrame) << "\n";
             ++outputCount;
         }
-        std::cout << "Shutting down..." << std::endl;
+        dbg_out << "Shutting down...\n";
         sensor.stopStream();
     } // when scope is exited, sensor connection is cleaned up
 

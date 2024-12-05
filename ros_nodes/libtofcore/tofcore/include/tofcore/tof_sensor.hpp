@@ -21,6 +21,7 @@
 #include <chrono>
 #include <cstdint>
 #include <functional>
+#include <list>
 #include <memory>
 #include <tuple>
 #include <optional>
@@ -34,6 +35,8 @@ constexpr const char*   DEFAULT_PORT_NAME           { "" };
 
 constexpr uint16_t      DEFAULT_MOD_FREQ_STEP_KHZ   { 10 };
 
+constexpr int IMU_SEND_RECEIVE_FAILED {-20};
+
 struct LensIntrinsics_t
 {
     double m_rowOffset { 0.0 };
@@ -41,6 +44,8 @@ struct LensIntrinsics_t
     double m_rowFocalLength { 0.0 };
     double m_columnFocalLength { 0.0 };
     std::array<double, 5> m_undistortionCoeffs { 0.0, 0.0, 0.0, 0.0, 0.0 };
+    double m_hfov { 0.0 };
+    double m_vfov { 0.0 };
 };
 
 enum class SensorControlStatus : uint8_t
@@ -56,6 +61,7 @@ enum class SensorControlStatus : uint8_t
 class Sensor
 {
 public:
+
     /// @brief Connect to a ToF sensor using the supplied uri string to locate the device and configure
     ///  the connection.
     /// @param uri The following uri schemes/formats are supported
@@ -80,8 +86,13 @@ public:
 
     typedef std::function<void (std::shared_ptr<Measurement_T>)> on_measurement_ready_t;
 
-    ~Sensor();
+    virtual ~Sensor();
 
+    uint32_t getDebugLevel() const;
+    void setDebugLevel(uint32_t level);
+
+    std::optional<uint16_t> getCalVledMv();
+    std::optional<uint8_t> getFrameCrcState();
     std::optional<uint32_t> getFramePeriodMs();
 	std::optional<std::tuple<uint32_t, uint32_t, uint32_t>> getFramePeriodMsAndLimits();
     std::optional<TofComm::ImuScaledData_T> getImuInfo();
@@ -107,8 +118,34 @@ public:
 
     std::optional<SensorControlStatus> getSensorControlState();
 
+    /* Retrieves the supported IMU accelerometr range in the units of G's. 
+       The first element of the returned tuple is the communication status code,
+       0 being successful and if not, a non-zero error code.
+       The second element is the list of supported ranges in G's. */
+    std::tuple<int8_t, std::list<uint8_t>> imuAccelerometerAvailableRangesInGs();
+
+    /* Retrieves the IMU accelerometr range in the units of G's. 
+       The first element of the returned tuple is the communication status code,
+       0 being successful and if not, a non-zero error code.
+       and the second element if the range in G's. */
+    std::tuple<int8_t, uint8_t> imuAccelerometerRangeInGs();
+
+    /* Sets the IMU accelerometr range in the units of G's. 
+       Returns 0 if successful and if not, a non-zero error code.  */
+    int8_t imuAccelerometerRangeInGs(uint8_t rangeInGs);
+
+    /* Initiates the IMU accelerometr self-test. 
+       Returns 0 if successful and if not, a non-zero error code.  */
+    int8_t imuAccelerometerSelfTest();
+
+    /* Initiates the IMU gyro self-test.  NOTE:  At this time, this routine
+       does nothing, self-test was not running correctly. 
+       Returns 0 if successful and if not, a non-zero error code.  */
+    int8_t imuGyroSelfTest();
+
     std::optional<bool> isFlipHorizontallyActive();
     std::optional<bool> isFlipVerticallyActive();
+    std::optional<bool> isRawDataSorted();
 
     void jumpToBootloader();
     void jumpToBootloader(uint16_t token);
@@ -116,8 +153,10 @@ public:
     bool setBinning(const bool vertical, const bool horizontal);
     bool setBinning(const bool binning);
     std::optional<uint8_t> getBinning();
+    bool setCalVledMv(uint16_t vledMv);
     bool setFlipHorizontally(bool flip);
     bool setFlipVertically(bool flip);
+    bool setFrameCrcState(uint8_t state);
     bool setFramePeriodMs(uint32_t periodMs);
     bool setHdr(bool enable, bool useSpatial=false);
     std::optional<TofComm::HdrSettings_T> getHdrSettings();
@@ -132,6 +171,7 @@ public:
     bool setSensorLocation(std::string location);
     bool setSensorName(std::string name);
     bool setVsm(const TofComm::VsmControl_T& vsmControl);
+    bool sortRawData(const bool sortIt);
 
     bool stopStream();
     bool storeSettings();
@@ -152,6 +192,11 @@ public:
 
 protected:
 
+    virtual std::tuple<bool, std::string> getCmdName(const uint16_t cmdId, const bool verbose) const;
+
+    void log_cmd_reply(const uint16_t command, const std::optional<std::vector<std::byte>> reply) const;
+    void log_cmd_send(const uint16_t command, const send_receive_payload_t& payload) const;
+
     send_receive_result_t send_receive(const uint16_t command, const std::vector<send_receive_payload_t>& payload, 
                                        std::chrono::steady_clock::duration timeout = std::chrono::seconds(5)) const;
     send_receive_result_t send_receive(const uint16_t command) const;
@@ -161,6 +206,8 @@ protected:
     send_receive_result_t send_receive(const uint16_t command, int16_t value) const;
     send_receive_result_t send_receive(const uint16_t command, uint8_t value) const;
     send_receive_result_t send_receive(const uint16_t command, int8_t value) const;
+
+    log_callback_t m_log_callback { nullptr };
 
 private:
     struct Impl;

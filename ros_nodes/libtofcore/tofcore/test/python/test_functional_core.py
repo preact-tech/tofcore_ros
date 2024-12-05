@@ -47,7 +47,19 @@ def test_get_sensor_info(dut: pytofcore.Sensor):
     print("Illuminator Version: " + versionInfo.illuminatorSwVersion + "." + versionInfo.illuminatorSwId)
     print("Backpack Module/Version: " + str(versionInfo.backpackModule))
 
-    assert versionInfo._fields == ('deviceSerialNumber', 'cpuBoardSerialNumber', 'illuminatorBoardSerialNumber', 'modelName', 'lastResetType', 'softwareId', 'softwareVersion', 'cpuVersion', 'chipId', 'illuminatorSwVersion', 'illuminatorSwId', 'illuminatorHwCfg' ,'backpackModule')
+    assert versionInfo._fields == ('deviceSerialNumber',
+                                   'cpuBoardSerialNumber',
+                                   'illuminatorBoardSerialNumber',
+                                   'modelName',
+                                   'lastResetType',
+                                   'softwareId',
+                                   'softwareVersion',
+                                   'cpuVersion',
+                                   'chipId',
+                                   'illuminatorSwVersion',
+                                   'illuminatorSwId',
+                                   'illuminatorHwCfg',
+                                   'backpackModule')
 
 
 @pytest.mark.functional
@@ -122,8 +134,9 @@ def test_get_imu_data(dut: pytofcore.Sensor):
     print("Accelerometer milli-g (x,y,z): " + str(imu_data.accel_millig[0]) + " " + str(imu_data.accel_millig[1]) + " " + str(imu_data.accel_millig[2]))
     print("Gyro milli-deg/sec (x,y,z): " + str(imu_data.gyro_milliDegreesPerSecond[0]) + " " + str(imu_data.gyro_milliDegreesPerSecond[1]) + " " + str(imu_data.gyro_milliDegreesPerSecond[2]))
     print("Temperature milli-degC: " + str(imu_data.temperature_milliDegreesC))
+    print("Timestamp ms: " + str(imu_data.timestamp))
 
-    assert imu_data._fields == ('accel_millig', 'gyro_milliDegreesPerSecond', 'temperature_milliDegreesC')
+    assert imu_data._fields == ('accel_millig', 'gyro_milliDegreesPerSecond', 'temperature_milliDegreesC', 'timestamp')
 
 @pytest.mark.functional
 def test_get_integration_time_limits(dut: pytofcore.Sensor):
@@ -670,7 +683,7 @@ def test_rapid_commands_with_streaming(dut: pytofcore.Sensor):
     callback.count = 0
 
     dut.subscribe_measurement(callback)
-    dut.stream_distance_amplitude()
+    dut.stream_dcs_diff_ambient()
 
     methods = [
         lambda: setattr(dut, "modulation_frequency", 12000),
@@ -678,7 +691,9 @@ def test_rapid_commands_with_streaming(dut: pytofcore.Sensor):
         partial(dut.set_min_amplitude, 50), 
         partial(dut.set_offset, 100),
         lambda: setattr(dut, "modulation_frequency", 24000),
-
+        partial(dut.set_integration_time, 200),
+        partial(dut.set_min_amplitude, 40), 
+        partial(dut.set_offset, 50),
         ]
 
     #Create a random sequence N calls to the functions listed above
@@ -687,7 +702,7 @@ def test_rapid_commands_with_streaming(dut: pytofcore.Sensor):
     try:
         for method in test_sequence: 
             method()
-            time.sleep(0.05) # No UDP packets make it through unless commands take a breather
+            time.sleep(0.001) # No UDP packets make it through unless commands take a breather
 
     except Exception as e:
          assert False, f'unexpected error occured: {e}'
@@ -836,4 +851,108 @@ def test_stream_prior_to_set_vsm(dut: pytofcore.Sensor):
     assert len(vsm.elements) == 0
    
     dut.stop_stream()
+ 
 
+@pytest.mark.functional
+def test_rapid_int_time_change_while_streaming(dut: pytofcore.Sensor):
+     
+    def callback(m):
+        callback.count += 1
+        
+    callback.count = 0
+
+    def set_int_time_loop():
+        int_time = 1
+        last_cmd_start_time = time.time()
+        now = last_cmd_start_time
+        end_time = now + 5.0
+        time_btw_commands = 0.04
+        while now < end_time:
+            now = time.time()
+            wait_time = (last_cmd_start_time + time_btw_commands) - now
+            if wait_time > 0.0:
+                time.sleep(wait_time)
+                last_cmd_start_time = time.time()
+                before = last_cmd_start_time
+                
+                dut.set_integration_time(int_time)
+                
+                after = time.time()
+                cmd_duration = after - before
+                if cmd_duration > 1.5:
+                    print(f"Setting integration time {int_time}, Elapsed setting of int time {cmd_duration}")
+                    raise RuntimeError("Setting integration time took > 1.5 seconds...")
+                int_time += 1
+
+    dut.subscribe_measurement(callback)
+    
+    dut.stream_dcs_diff_ambient()
+
+    set_int_time_loop()
+    
+    dut.stop_stream()
+ 
+
+@pytest.mark.functional
+def test_rapid_imu_query_while_streaming(dut: pytofcore.Sensor):
+     
+    def callback(m):
+        callback.count += 1
+        
+    callback.count = 0
+
+    def query_imu():
+        last_cmd_start_time = time.time()
+        now = last_cmd_start_time
+        end_time = now + 5.0
+        time_btw_commands = 0.04
+        while now < end_time:
+            now = time.time()
+            wait_time = (last_cmd_start_time + time_btw_commands) - now
+            if wait_time > 0.0:
+                time.sleep(wait_time)
+                last_cmd_start_time = time.time()
+                before = last_cmd_start_time
+                
+                res = dut.get_imu_data()
+                
+                after = time.time()
+                cmd_duration = after - before
+                if cmd_duration > 1.5:
+                    print(f"Getting IMU data took {cmd_duration}")
+                    raise RuntimeError("Setting integration time took > 1.5 seconds...")
+
+    dut.subscribe_measurement(callback)
+    
+    dut.stream_dcs_diff_ambient()
+
+    query_imu()
+    
+    dut.stop_stream()
+
+
+@pytest.mark.functional
+def test_frame_crc_state(dut: pytofcore.Sensor):
+    
+    original_crc_state = dut.get_frame_crc_state()
+    
+    dut.set_frame_crc_state(0)
+    crc_state = dut.get_frame_crc_state()
+    assert crc_state is not None, "No CRC state"
+    assert crc_state == (0), "Failed to disable CRCs"
+    
+    dut.set_frame_crc_state(1)
+    crc_state = dut.get_frame_crc_state()
+    assert crc_state is not None, "No CRC state"
+    assert crc_state == (1), "Failed to enable CRCs"
+    
+    dut.set_frame_crc_state(2)
+    crc_state = dut.get_frame_crc_state()
+    assert crc_state is not None, "No CRC state"
+    assert crc_state == (2), "Failed to enable per-frame CRCs"
+     
+    dut.set_frame_crc_state(original_crc_state)
+    crc_state = dut.get_frame_crc_state()
+    assert crc_state is not None, "No CRC state"
+    assert crc_state == (original_crc_state), "Failed to restore CRC state"
+   

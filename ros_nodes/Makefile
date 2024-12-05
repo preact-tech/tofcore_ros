@@ -22,8 +22,6 @@ pipeline:
 
 .PHONY: provision
 provision:
-	vcs import < required.repos . --recursive
-	vcs --nested custom --git --args show
 	rm -rf ros2/tofcore_ros/libtofcore ros2/tofcore_discovery/libtofcore ros1/tofcore_ros/libtofcore
 	cd ros2 && ln -fs ../../libtofcore tofcore_ros/libtofcore
 
@@ -38,7 +36,7 @@ provision_bridge: provision ##	Install required tools, packages and git repos to
 provision_ros1: provision ##	Install required tools, packages and git repos to build the truenense package as well as the ROS bridge package
 	sudo sh -c 'echo "deb http://packages.ros.org/ros/ubuntu $(TARGET_DISTRO_VER) main" > /etc/apt/sources.list.d/ros-noetic.list'
 	curl -s https://raw.githubusercontent.com/ros/rosdistro/master/ros.asc | sudo apt-key add -
-	sudo apt update && sudo apt install -y ros-noetic-desktop-full python3-catkin-pkg
+	sudo apt update && sudo apt install -y ros-noetic-desktop-full python3-catkin-pkg libgmock-dev
 	cd ros1 && ln -fs ../../libtofcore tofcore_ros/libtofcore
 
 

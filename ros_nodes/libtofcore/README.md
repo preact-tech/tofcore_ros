@@ -18,22 +18,31 @@ Requirements:
 - CMake v3.16
 - Requires Boost v1.70 or newer
 - Python v3.8 or greater (if using python bindings)
+- Python setuptools
 - libudev-dev (prequisite for libusbp)
 - libusbp v1.3 or newer
 
+Python setuptools installation
+```
+sudo -m pip install setuptools
+```
+
 Libudev installation
-```sudo apt-get update -y
-sudo apt-get install cmake libudev-dev
+```
+sudo apt-get update -y
+sudo apt-get install cmake libudev-dev pkg-config g++
 ```
 
 USB Udev Rules
 Create new udev rules file for usb. Example: etc/udev/rules.d/99-usb-rules.rules
-```SUBSYSTEMS=="usb", ATTRS{idVendor}=="35FA", ATTRS{idProduct}=="0D0F", MODE:="0666"
+```
+SUBSYSTEMS=="usb", ATTRS{idVendor}=="35FA", ATTRS{idProduct}=="0D0F", MODE:="0666"
 ```
 
 ## Normal build and install of library:
 
-```bash
+```
+bash
 make build
 ```
 
