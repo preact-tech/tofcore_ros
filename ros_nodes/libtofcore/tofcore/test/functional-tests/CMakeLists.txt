@@ -1,3 +1,5 @@
+add_subdirectory (libdbg_out)
+add_subdirectory (libpo_count)
 add_subdirectory (get-lens-info)
 add_subdirectory (get-unit-vector)
 add_subdirectory (ipv4-change-test)

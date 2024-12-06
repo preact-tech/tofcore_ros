@@ -5,23 +5,28 @@
  *
  * Test program that sets/gets IPv4 settings
  */
+#include "dbg_out.hpp"
+#include "po_count.hpp"
 #include "tofcore/tof_sensor.hpp"
 #include <algorithm>
 #include <array>
 #include <chrono>
 #include <csignal>
 #include <iomanip>
-#include <iostream>
 #include <thread>
 #include <vector>
-#include <boost/program_options.hpp>
 
+using namespace test;
 using namespace tofcore;
 using namespace TofComm;
 using namespace std::chrono_literals;
 using namespace std::chrono;
 
+static DebugOutput dbg_out {};
+static ErrorOutput err_out {};
+
 static uint32_t baudRate { DEFAULT_BAUD_RATE };
+static uint32_t debugLevel { 0 };
 static std::string devicePort { DEFAULT_PORT_NAME };
 static volatile bool exitRequested { false };
 
@@ -40,7 +45,6 @@ static bool storeRefFrame   { false };
 
 static void parseArgs(int argc, char *argv[])
 {
-    namespace po = boost::program_options;
     po::options_description desc(
                 "Edge example for volume edge application\n\n"
                 "  Usage: tof-edge [options]\n\n"
@@ -60,11 +64,13 @@ static void parseArgs(int argc, char *argv[])
         ("auto-start,a",    po::value<bool>(&autoStart), "Enable/disable auto-start of edge application")
         ("baud-rate,b",     po::value<uint32_t>(&baudRate)->default_value(DEFAULT_BAUD_RATE), "Set baud rate")
         ("capture,c",                                       "Capture reference frame")
+        ("debug,G", new     CountValue(&debugLevel),"Increase debug level of libtofcore")
         ("device-uri,p",    po::value<std::string>(&devicePort),                    "Specify sensor address")
         ("erase,E",                                         "Erase reference frame")
         ("enable-edge,e",   po::value<bool>(&enableEdge),   "Enable/disable edge application")
         ("get-volume,g",                                    "Get volume results")
         ("help,h",                                          "produce help message")
+        ("quiet,q",         po::bool_switch(&dbg_out.quiet)->default_value(false), "Disable output")
         ("read-params,r",                                   "Read volume algorithm parameters")
         ("store,s",                                         "Store reference frame to NOR")
         ("write,w",         po::value<std::string>(&jsonParam), "Write JSON parameter setting")
@@ -75,7 +81,7 @@ static void parseArgs(int argc, char *argv[])
     po::notify(vm);
     if (vm.count("help"))
     {
-        std::cout << desc << "\n";
+        dbg_out << desc << "\n";
         exit(0);
     }
 
@@ -115,6 +121,7 @@ int main(int argc, char *argv[])
 #endif
     {
         tofcore::Sensor sensor { devicePort, baudRate };
+        sensor.setDebugLevel(debugLevel);
 
         if (captureRefFrame || eraseRefFrame || storeRefFrame)
         {
@@ -142,11 +149,11 @@ int main(int argc, char *argv[])
             std::byte cmdByte = (std::byte)cmdFlags;
             if (!sensor.send_receive(CONFIG_VOLUME_REF_FRAME, Sensor::send_receive_payload_t(&cmdByte, 1)))
             {
-                std::cerr << "Failed to configure reference frame\n";
+                err_out << "Failed to configure reference frame\n";
             }
             else
             {
-                std::cout << "Reference frame configuration: " << description.c_str() << "\n";
+                dbg_out << "Reference frame configuration: " << description.c_str() << "\n";
             }
         }
 
@@ -157,11 +164,11 @@ int main(int argc, char *argv[])
             uint16_t command = (autoStart ? ENABLE_AUTO_START : DISABLE_AUTO_START);
             if (!sensor.send_receive(command, Sensor::send_receive_payload_t { }))
             {
-                std::cerr << "Failed to enable/disable auto-start of edge application\n";
+                err_out << "Failed to enable/disable auto-start of edge application\n";
             }
             else
             {
-                std::cout << "Edge Application AUTO-START " << (autoStart ? "ENABLED\n" : "DISABLED\n");
+                dbg_out << "Edge Application AUTO-START " << (autoStart ? "ENABLED\n" : "DISABLED\n");
             }
         }
 
@@ -172,11 +179,11 @@ int main(int argc, char *argv[])
             uint16_t command = (enableEdge ? EDGE_APP_ENABLE : EDGE_APP_DISABLE);
             if (!sensor.send_receive(command, Sensor::send_receive_payload_t { }))
             {
-                std::cerr << "Failed to enable/disable edge application\n";
+                err_out << "Failed to enable/disable edge application\n";
             }
             else
             {
-                std::cout << "Edge application " << (enableEdge ? "ENABLED\n" : "DISABLED\n");
+                dbg_out << "Edge application " << (enableEdge ? "ENABLED\n" : "DISABLED\n");
             }
         }
 
@@ -187,16 +194,16 @@ int main(int argc, char *argv[])
 
              if (volumeData)
              {
-                 std::cout << "Received " << volumeData->size() <<" bytes of volume data from sensor" << std::endl;
+                 dbg_out << "Received " << volumeData->size() <<" bytes of volume data from sensor\n";
                  auto data = *volumeData;
                  uint32_t scaledResult = ((uint32_t)data[1] << 24) +
                                          ((uint32_t)data[2] << 16) +
                                          ((uint32_t)data[3] << 8)  + (uint32_t)data[4];
-                 std::cout << "Scaled result: " << scaledResult << std::endl;
+                 dbg_out << "Scaled result: " << scaledResult << "\n";
              }
              else
              {
-                 std::cerr << "ERROR: No valid Volume data received" << std::endl;
+                 err_out << "ERROR: No valid Volume data received\n";
              }
         }
 
@@ -211,11 +218,11 @@ int main(int argc, char *argv[])
 
                 std::string paramString = std::string(reinterpret_cast<const char*>(answer.data()+1), size-1);
 
-                std::cout << "Volume parameters: '" << paramString.c_str() << "'\n";
+                dbg_out << "Volume parameters: '" << paramString.c_str() << "'\n";
             }
             else
             {
-                std::cerr << "ERROR: Failed to read volume parameters" << std::endl;
+                err_out << "ERROR: Failed to read volume parameters\n";
             }
         }
 
@@ -232,11 +239,11 @@ int main(int argc, char *argv[])
             if (!sensor.send_receive(SET_VOLUME_PARAMETERS,
                                      Sensor::send_receive_payload_t(commandPayload.data(), commandPayload.size()) ))
             {
-                std::cerr << "Setting volume parameter FAILED: '" << jsonParam.c_str() << "'\n";
+                err_out << "Setting volume parameter FAILED: '" << jsonParam.c_str() << "'\n";
             }
             else
             {
-                std::cout << "Setting volume parameter SUCCEEDED: '" << jsonParam.c_str() << "'\n";
+                dbg_out << "Setting volume parameter SUCCEEDED: '" << jsonParam.c_str() << "'\n";
             }
        }
 

@@ -5,6 +5,8 @@
  *
  * Test program that sets IPv4 address and then communicates to the new address
  */
+#include "dbg_out.hpp"
+#include "po_count.hpp"
 #include "tofcore/tof_sensor.hpp"
 #include <array>
 #include <chrono>
@@ -12,28 +14,31 @@
 #include <iomanip>
 #include <iostream>
 #include <thread>
-#include <boost/program_options.hpp>
 
+using namespace test;
 using namespace tofcore;
 using namespace std::chrono_literals;
 using namespace std::chrono;
 
+static DebugOutput dbg_out {};
+
 static uint32_t baudRate { DEFAULT_BAUD_RATE };
+static uint32_t debugLevel { 0 };
 static std::string devicePort { DEFAULT_PORT_NAME };
 static volatile bool exitRequested { false };
 
-
 static void parseArgs(int argc, char *argv[])
 {
-    namespace po = boost::program_options;
     po::options_description desc(
                 "Test ability to change IPv4 address and then communicate at that new address\n\n"
                 "  Usage: [options]\n\n"
                 );
     desc.add_options()
-        ("help,h", "produce help message")
-        ("device-uri,p", po::value<std::string>(&devicePort))
         ("baud-rate,b", po::value<uint32_t>(&baudRate)->default_value(DEFAULT_BAUD_RATE))
+        ("debug,G", new  CountValue(&debugLevel),"Increase debug level of libtofcore")
+        ("device-uri,p", po::value<std::string>(&devicePort))
+        ("help,h", "produce help message")
+        ("quiet,q", po::bool_switch(&dbg_out.quiet)->default_value(false), "Disable output")
         ;
 
     po::variables_map vm;
@@ -42,7 +47,7 @@ static void parseArgs(int argc, char *argv[])
     po::notify(vm);
 
     if (vm.count("help")) {
-        std::cout << desc << "\n";
+        dbg_out << desc << "\n";
         exit(0);
     }
 }
@@ -73,18 +78,20 @@ int main(int argc, char *argv[])
     {
         {
             tofcore::Sensor sensor { devicePort, baudRate };
+            sensor.setDebugLevel(debugLevel);
+
             ipv4Addr[3] = (std::byte)(180 + addrOffset);
             if (sensor.setIPv4Settings(ipv4Addr, ipv4Mask, ipv4Gway))
             {
-                std::cout << "SUCCESS in setting:" << std::endl;
+                dbg_out << "SUCCESS in setting:\n";
             }
             else
             {
-                std::cout << "FAILED in setting:" << std::endl;
+                dbg_out << "FAILED in setting:\n";
             }
-            std::cout << "  ipv4Addr: " << (unsigned)ipv4Addr[0] << "." << (unsigned)ipv4Addr[1] << "." << (unsigned)ipv4Addr[2] << "." << (unsigned)ipv4Addr[3] << std::endl;
-            std::cout << "  ipv4Mask: " << (unsigned)ipv4Mask[0] << "." << (unsigned)ipv4Mask[1] << "." << (unsigned)ipv4Mask[2] << "." << (unsigned)ipv4Mask[3] << std::endl;
-            std::cout << "  ipv4GW:   " << (unsigned)ipv4Gway[0] << "." << (unsigned)ipv4Gway[1] << "." << (unsigned)ipv4Gway[2] << "." << (unsigned)ipv4Gway[3] << std::endl;
+            dbg_out << "  ipv4Addr: " << (unsigned)ipv4Addr[0] << "." << (unsigned)ipv4Addr[1] << "." << (unsigned)ipv4Addr[2] << "." << (unsigned)ipv4Addr[3] << "\n";
+            dbg_out << "  ipv4Mask: " << (unsigned)ipv4Mask[0] << "." << (unsigned)ipv4Mask[1] << "." << (unsigned)ipv4Mask[2] << "." << (unsigned)ipv4Mask[3] << "\n";
+            dbg_out << "  ipv4GW:   " << (unsigned)ipv4Gway[0] << "." << (unsigned)ipv4Gway[1] << "." << (unsigned)ipv4Gway[2] << "." << (unsigned)ipv4Gway[3] << "\n";
         }
 
         std::this_thread::sleep_for(1s);
@@ -99,14 +106,14 @@ int main(int argc, char *argv[])
 
             if (ipv4ValuesRead)
             {
-                std::cout << "IPv4 values reported:" << std::endl;
-                std::cout << "  ipv4Addr: " << (unsigned)adrs[0] << "."<< (unsigned)adrs[1] << "."<< (unsigned)adrs[2] << "."<< (unsigned)adrs[3] << std::endl;
-                std::cout << "  ipv4Mask: " << (unsigned)mask[0] << "."<< (unsigned)mask[1] << "."<< (unsigned)mask[2] << "."<< (unsigned)mask[3] << std::endl;
-                std::cout << "  ipv4GW:   " << (unsigned)gway[0] << "."<< (unsigned)gway[1] << "."<< (unsigned)gway[2] << "."<< (unsigned)gway[3] << std::endl;
+                dbg_out << "IPv4 values reported:\n";
+                dbg_out << "  ipv4Addr: " << (unsigned)adrs[0] << "."<< (unsigned)adrs[1] << "."<< (unsigned)adrs[2] << "."<< (unsigned)adrs[3] << "\n";
+                dbg_out << "  ipv4Mask: " << (unsigned)mask[0] << "."<< (unsigned)mask[1] << "."<< (unsigned)mask[2] << "."<< (unsigned)mask[3] << "\n";
+                dbg_out << "  ipv4GW:   " << (unsigned)gway[0] << "."<< (unsigned)gway[1] << "."<< (unsigned)gway[2] << "."<< (unsigned)gway[3] << "\n";
             }
             else
             {
-                std::cout << "FAILED read of IPv4 values" << std::endl;
+                dbg_out << "FAILED read of IPv4 values\n";
             }
         }
     }

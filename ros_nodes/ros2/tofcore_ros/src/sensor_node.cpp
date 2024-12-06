@@ -61,7 +61,7 @@ ToFSensor::ToFSensor()
   {
     std::vector<tofcore::device_info_t> devices = tofcore::find_all_devices(std::chrono::seconds(5), std::numeric_limits<int>::max());
     interface_.reset(new tofcore::Sensor(devices.begin()->connector_uri));
-    RCLCPP_INFO(this->get_logger(), "No URI provided, using default device connection uri: \"%s\"", devices.begin()->connector_uri);
+    RCLCPP_INFO(this->get_logger(), "No URI provided, using default device connection uri: \"%s\"", devices.begin()->connector_uri.c_str());
     sensor_uri_ = devices.begin()->connector_uri;
   }
   interface_->stopStream();

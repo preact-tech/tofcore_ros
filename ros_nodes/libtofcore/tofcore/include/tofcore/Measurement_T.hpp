@@ -135,8 +135,17 @@ public:
     /// @brief Measurement type
     virtual DataType type() const = 0;
 
-    /// @brief Is the measuremnt pixel data in big endian or little endian format
+    /// @brief Is the measurement pixel data in big endian or little endian format
     virtual bool is_big_endian() const = 0;
+
+    /// @brief Is the pixel data flipped horizontally around the center
+    virtual bool is_flipped_horizontally() const = 0;
+
+    /// @brief Is the pixel data flipped vertically around the center
+    virtual bool is_flipped_vertically() const = 0;
+
+    /// @brief Is the raw pixel data sorted top-to-bottom (instead of native order of sensor)
+    virtual bool is_raw_data_sorted() const = 0;
 
     /// @brief Size of each pixel of data in the measurement data
     virtual int pixel_size() const = 0;
@@ -205,13 +214,24 @@ public:
     ///
     /// If the timestamp was not included with this measurement then std::nullopt is returned
     virtual std::optional<uint32_t> frame_timestamp() const = 0;
+
+    /// @brief Get the frame crcs that were calculated by the sensor prior to streaming the data.
+    ///
+    /// If the CRCs were not included with this measurement then std::nullopt is returned
+    virtual std::optional<std::vector<uint32_t>> frame_crcs() const = 0;
+
+    /// @brief Determine whether CRC errors were detected.
+    ///
+    /// @return true if CRCs were in the frame KLV data and failed to match what was calculated.
+    virtual bool crc_errors() const = 0;
 };
 
 
 /// @brief Factory function to create new Measurement_T derived object from a std vector of bytes
 /// @param buffer vector of bytes containing raw recieved measurement data
 /// @return Shared pointer to concrete measurement instance
-std::shared_ptr<tofcore::Measurement_T> create_measurement(const std::vector<std::byte>& buffer);
+std::shared_ptr<tofcore::Measurement_T> create_measurement(const std::vector<std::byte>& buffer,
+                                                           log_callback_t log_callback = nullptr);
 
 } //end namespace tofcore
 

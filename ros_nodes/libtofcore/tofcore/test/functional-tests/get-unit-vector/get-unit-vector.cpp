@@ -5,18 +5,24 @@
  *
  * Test program that libtofcore to read Lens unit vector.
  */
+#include "dbg_out.hpp"
+#include "po_count.hpp"
 #include "tofcore/tof_sensor.hpp"
 #include <csignal>
 #include <iomanip>
-#include <iostream>
 #include <boost/program_options.hpp>
 
+using namespace test;
 using namespace tofcore;
 
 inline constexpr unsigned NUM_ROWS { 240 };
 inline constexpr unsigned NUM_COLS { 320 };
 
+static DebugOutput dbg_out {};
+static ErrorOutput err_out {};
+
 static uint32_t baudRate { DEFAULT_BAUD_RATE };
+static uint32_t debugLevel { 0 };
 static std::string devicePort { DEFAULT_PORT_NAME };
 static volatile bool exitRequested { false };
 
@@ -25,9 +31,11 @@ static void parseArgs(int argc, char *argv[])
     namespace po = boost::program_options;
     po::options_description desc("Get Lens Information Test");
     desc.add_options()
-        ("help,h", "produce help message")
-        ("device-uri,p", po::value<std::string>(&devicePort))
         ("baud-rate,b", po::value<uint32_t>(&baudRate)->default_value(DEFAULT_BAUD_RATE))
+        ("device-uri,p", po::value<std::string>(&devicePort))
+        ("debug,G", new  CountValue(&debugLevel),"Increase debug level of libtofcore")
+        ("help,h", "produce help message")
+        ("quiet,q", po::bool_switch(&dbg_out.quiet)->default_value(false), "Disable output")
         ;
 
     po::variables_map vm;
@@ -35,7 +43,7 @@ static void parseArgs(int argc, char *argv[])
     po::notify(vm);
 
     if (vm.count("help")) {
-        std::cout << desc << "\n";
+        dbg_out << desc << "\n";
         exit(0);
     }
 }
@@ -48,26 +56,26 @@ static void signalHandler(int signum)
 
 static void printRay(const std::vector<double>& ray, const char* rayName)
 {
-    std::cout << "double " << rayName << "[" << NUM_ROWS << "][" << NUM_COLS << "] =\n{\n";
+    dbg_out << "double " << rayName << "[" << NUM_ROWS << "][" << NUM_COLS << "] =\n{\n";
     for (unsigned row = 0; row < NUM_ROWS; ++row)
     {
-        std::cout << "  /* ROW: " << std::setw(3) << std::setfill('0') << row << " */ {";
+        dbg_out << "  /* ROW: " << std::setw(3) << std::setfill('0') << row << " */ {";
         for (unsigned col = 0; col < NUM_COLS; ++col)
         {
-            std::cout << ray[row];
+            dbg_out << ray[row];
             if (col != (NUM_COLS - 1))
             {
-                std::cout << ", ";
+                dbg_out << ", ";
             }
         }
-        std::cout << "}";
+        dbg_out << "}";
         if (row != (NUM_ROWS - 1))
         {
-            std::cout << ",";
+            dbg_out << ",";
         }
-        std::cout << "\n";
+        dbg_out << "\n";
     }
-    std::cout << "};\n";
+    dbg_out << "};\n";
 
 }
 
@@ -84,6 +92,7 @@ int main(int argc, char *argv[])
 #endif
     {
         tofcore::Sensor sensor { devicePort, baudRate };
+        sensor.setDebugLevel(debugLevel);
 
         std::vector<double> rays_x;
         std::vector<double> rays_y;
@@ -96,7 +105,7 @@ int main(int argc, char *argv[])
         }
         else
         {
-            std::cerr << "Unable to read unit vector data" << std::endl;
+            err_out << "Unable to read unit vector data\n";
         }
 
     } // when scope is exited, sensor connection is cleaned up

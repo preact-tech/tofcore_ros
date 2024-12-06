@@ -59,6 +59,8 @@ target_sources(tofcore
     src/cartesian_transform.cpp
     src/crc32.cpp
     src/klv_decoder.cpp
+    src/IteratorIndexIn.cpp
+    src/IteratorIndexInLut.cpp
 )
 
 target_link_libraries(tofcore PRIVATE Boost::boost)

@@ -132,6 +132,7 @@ static auto getImuData(tofcore::Sensor& s)
         fields.append("accel_millig");
         fields.append("gyro_milliDegreesPerSecond");
         fields.append("temperature_milliDegreesC");
+        fields.append("timestamp");
         return namedTuple_attr("ImuData", fields);
     }();
 
@@ -145,7 +146,10 @@ static auto getImuData(tofcore::Sensor& s)
         throw std::runtime_error("An error occured while getting Imu information");
     }
 
-    return ImuData_type(result->accelerometer_millig, result->gyro_milliDegreesPerSecond, result->temperature_milliDegreesC);
+    return ImuData_type(result->accelerometer_millig, 
+                        result->gyro_milliDegreesPerSecond, 
+                        result->temperature_milliDegreesC,
+                        result->timestamp);
 }
 
 
@@ -340,6 +344,8 @@ static auto getLensInfo(tofcore::Sensor& s)
         fields.append("rowFocalLength");
         fields.append("columnFocalLength");
         fields.append("undistortionCoeffs");
+        fields.append("hfov");
+        fields.append("vfov");
         return namedTuple_attr("LensInfo", fields);
     }();
     std::optional<tofcore::LensIntrinsics_t> result;
@@ -353,7 +359,7 @@ static auto getLensInfo(tofcore::Sensor& s)
     }
 
     return LensInfo_type(result->m_rowOffset, result->m_columnOffset, result->m_rowFocalLength,
-                         result->m_columnFocalLength, result->m_undistortionCoeffs);
+                         result->m_columnFocalLength, result->m_undistortionCoeffs, result->m_hfov, result->m_vfov);
 }
 
 static auto getPixelRays(tofcore::Sensor& s)
@@ -435,7 +441,7 @@ static auto getSensorInfo(tofcore::Sensor& s)
                             versionData.m_lastResetType,
                             versionData.m_softwareSourceID,
                             versionData.m_softwareVersion,
-                            versionData.m_cpuVersion,
+                            versionData.m_cpuBoardRevision,
                             chipId,
                             versionData.m_illuminatorSwVersion,
                             versionData.m_illuminatorSwSourceId,
@@ -874,6 +880,16 @@ static bool set_vsm(tofcore::Sensor &sensor, const TofComm::VsmControl_T& vsmCon
     return result;
 }
 
+static auto imuAccelerometerSelfTest(tofcore::Sensor& s)
+{
+    int result = 0;
+    {
+        py::gil_scoped_release gsr;
+        result = s.imuAccelerometerSelfTest();
+    }
+    return result;
+}
+
 static auto jump_to_bootloader(tofcore::Sensor& s)
 {
     s.jumpToBootloader();
@@ -918,12 +934,15 @@ PYBIND11_MODULE(pytofcore, m) {
         .def(py::init<const std::string&>(), py::arg("uri")=tofcore::DEFAULT_URI)
         .def(py::init<const std::string&, uint32_t>(), py::arg("port_name")=tofcore::DEFAULT_PORT_NAME, py::arg("baud_rate")=tofcore::DEFAULT_BAUD_RATE)
         .def_property_readonly("pixel_rays", &getPixelRays, "Obtain unit vector ray information for all pixels based on the lens information stored on the sensor. Returns a namedtuple with fields x, y, z. Each field is a list of floats of length width x height.")
-        .def_property_readonly("lens_info", &getLensInfo, "Obtain Lens information stored on sensor. Returns a namedtuple with fields rowOffset, columnOffset, rowFocalLength, columnFocalLength, undistortionCoeffs.")
+        .def_property_readonly("lens_info", &getLensInfo, "Obtain Lens information stored on sensor. Returns a namedtuple with fields rowOffset, columnOffset, rowFocalLength, columnFocalLength, undistortionCoeffs, hfov, vfov.")
 
         .def("get_binning", &tofcore::Sensor::getBinning, "Get binning setting on sensor", py::call_guard<py::gil_scoped_release>())
+        .def("get_frame_crc_state", &tofcore::Sensor::getFrameCrcState, "Get state of frame CRC calculation", py::call_guard<py::gil_scoped_release>())
         .def("get_frame_period_and_limits", &getSensorFramePeriodAndLimits, "query the device for the currently configured frame period limits", py::call_guard<py::gil_scoped_release>())
         .def("get_frame_period", &tofcore::Sensor::getFramePeriodMs, "Get target frame period", py::call_guard<py::gil_scoped_release>())
+        .def("get_hdr_settings", &tofcore::Sensor::getHdrSettings, "Get the current HDR settings from the sensor", py::call_guard<py::gil_scoped_release>())
         .def("get_imu_data", &getImuData, "Imu data")
+        .def("get_imu_accelerometer_available_ranges", &tofcore::Sensor::imuAccelerometerAvailableRangesInGs, "Imu accelerometer available ranges", py::call_guard<py::gil_scoped_release>())
         .def("get_integration_time_and_limits", &getSensorIntegrationTimeAndLimits, "query the device for the currently configured integration time limits", py::call_guard<py::gil_scoped_release>())
         .def("get_integration_time", &getSensorIntegrationTime, "query the device for the currently configured integration time setting", py::call_guard<py::gil_scoped_release>())
         .def("get_min_amplitude_and_limits", &getSensorMinAmplitudeAndLimits, "query the device for the currently configured min amplitude limits", py::call_guard<py::gil_scoped_release>())
@@ -935,10 +954,15 @@ PYBIND11_MODULE(pytofcore, m) {
         .def("get_vled_setting_and_limits", &getSensorVledSettingAndLimits, "Get the setting store in the vled register, as well as the max/min VLED limits in mV.", py::call_guard<py::gil_scoped_release>())
         .def("get_vsm_max_number_of_elements", &getSensorVSMMaxNumberOfElements, "query the device for the maximum number of VSM elements")
         .def("get_vsm", &get_vsm, "Get the current Vector Sequence Mode (VSM) settings")
+        .def("imu_accelerometer_self_test", &imuAccelerometerSelfTest, "Imu accelerometer self-test")
+        .def("imu_accelerometer_range", static_cast<std::tuple<int8_t, uint8_t>(tofcore::Sensor::*)()>(&tofcore::Sensor::imuAccelerometerRangeInGs), "Get the Imu accelerometer current range", py::call_guard<py::gil_scoped_release>())
+        .def("imu_accelerometer_range", static_cast<int8_t (tofcore::Sensor::*)(uint8_t)>(&tofcore::Sensor::imuAccelerometerRangeInGs), "Set the Imu accelerometer range", py::call_guard<py::gil_scoped_release>())
+        .def("is_raw_data_sorted", &tofcore::Sensor::isRawDataSorted, "Get raw data sorting setting on sensor", py::call_guard<py::gil_scoped_release>())
         .def("jump_to_bootloader", &jump_to_bootloader, "Activate bootloader mode to flash firmware", py::call_guard<py::gil_scoped_release>())
         .def("reset_sensor", &reset_sensor, "Perform a software reset of the sensor", py::call_guard<py::gil_scoped_release>())
         .def("set_binning", py::overload_cast<bool>(&tofcore::Sensor::setBinning), "Set binning on device", py::arg("binning"), py::call_guard<py::gil_scoped_release>())
         .def("set_binning", py::overload_cast<tofcore::Sensor&, bool, bool>(&setBinning), "Set horizontal and vertical binning settings on sensor. Being deprecated", py::arg("vertical"), py::arg("horizontal"))
+        .def("set_frame_crc_state", &tofcore::Sensor::setFrameCrcState, py::arg("state"), "Set state of frame CRC calculation", py::call_guard<py::gil_scoped_release>())
         .def("set_frame_period", &tofcore::Sensor::setFramePeriodMs, py::arg("period_in_ms"), "Set target frame period", py::call_guard<py::gil_scoped_release>())
         .def("set_integration_time", &tofcore::Sensor::setIntegrationTime, "Set the integration time parameter on the sensor", py::arg("timeUs"), py::call_guard<py::gil_scoped_release>())
         .def("set_integration_times", &tofcore::Sensor::setIntegrationTimes, "Set all integration time parameters on the sensor", py::arg("low"), py::arg("mid"), py::arg("high"), py::call_guard<py::gil_scoped_release>())
@@ -947,7 +971,7 @@ PYBIND11_MODULE(pytofcore, m) {
         .def("set_offset", &tofcore::Sensor::setOffset, py::arg("offset"), "Apply milimeter offest to very distance pixel returned by the sensor", py::call_guard<py::gil_scoped_release>())
         .def("set_vsm", &set_vsm, "Set the current Vector Sequence Mode (VSM) settings")
         .def("set_hdr", &tofcore::Sensor::setHdr, py::arg("enable"), py::arg("use_spatial")=false, "Enable or disable High Dynamic Range mode", py::call_guard<py::gil_scoped_release>())
-        .def("get_hdr_settings", &tofcore::Sensor::getHdrSettings, "Get the current HDR settings from the sensor", py::call_guard<py::gil_scoped_release>())
+        .def("sort_raw_data", &tofcore::Sensor::sortRawData, py::arg("sort_it"), "Enable or disable on-sensor sorting of raw data", py::call_guard<py::gil_scoped_release>())
         .def("stop_stream", &tofcore::Sensor::stopStream, "Command the sensor to stop streaming", py::call_guard<py::gil_scoped_release>())
         .def("storeSettings", &tofcore::Sensor::storeSettings, "Store the sensor's settings to persistent memory", py::call_guard<py::gil_scoped_release>())
         .def("stream_dcs_ambient", &tofcore::Sensor::streamDCSAmbient, "Command the sensor to stream DCS and Ambient frames. Ambient frames are of type Frame::DataType::GRAYSCALE", py::call_guard<py::gil_scoped_release>())
@@ -974,24 +998,25 @@ PYBIND11_MODULE(pytofcore, m) {
     py::class_<tofcore::Measurement_T, std::shared_ptr<tofcore::Measurement_T>> measurement(m, "Measurement");
     //Note: there is intentionally no init function for measurement, currently these must be produced by receiving data from a Sensor class
     measurement
-        .def_property_readonly("width", &tofcore::Measurement_T::width, "width in pixels of measurement data")
-        .def_property_readonly("height", &tofcore::Measurement_T::height, "height in pixels of measurement data")
-        .def_property_readonly("pixel_size", &tofcore::Measurement_T::pixel_size, "size in bytes of each pixel")
-        .def_property_readonly("data_type", &tofcore::Measurement_T::type, "the type of the measurement data")
-        .def_property_readonly("distance_data", &get_distance_view, "obtain memoryview of the distance frame in the measurement")
-        .def_property_readonly("amplitude_data", &get_amplitude_view, "obtain memoryview of the amplitude frame in the measurement")
         .def_property_readonly("ambient_data", &get_ambient_view, "obtain memoryview of the ambient frame in the measurement")
+        .def_property_readonly("amplitude_data", &get_amplitude_view, "obtain memoryview of the amplitude frame in the measurement")
+        .def_property_readonly("crc_errors", &tofcore::Measurement_T::crc_errors, "indicates whether CRC errors were observed")
+        .def_property_readonly("data_type", &tofcore::Measurement_T::type, "the type of the measurement data")
         .def_property_readonly("dcs_data", &get_dcs_view, DCS_DATA_DOCSTRING)
         .def_property_readonly("dcs_diff_data", &get_dcs_diff_view, DCS_DIFF_DATA_DOCSTRING)
-        .def_property_readonly("meta_data", &get_meta_data_view, "obtain memoryview of the raw block of meta-data associated with the measurement (useful for custom decoding of data not otherwise available via the API)")
-        .def_property_readonly("sensor_temperatures", &tofcore::Measurement_T::sensor_temperatures, "get imaging sensor temperature data")
-        .def_property_readonly("integration_time", &tofcore::Measurement_T::integration_time, "get integration time setting during capture (uint16_t uS)")
-        .def_property_readonly("modulation_frequency", &tofcore::Measurement_T::modulation_frequency, "get modulation frequency (Hz) setting during capture")
-        .def_property_readonly("horizontal_binning", &tofcore::Measurement_T::horizontal_binning, "get horizontal binning setting used during capture, 0 means no binning, values above 1 indicate the amount of subsampling")
-        .def_property_readonly("vertical_binning", &tofcore::Measurement_T::vertical_binning, "get vertical binning setting used during capture, 0 means no binning, values above 1 indicate the amount of subsampling")
+        .def_property_readonly("distance_data", &get_distance_view, "obtain memoryview of the distance frame in the measurement")
         .def_property_readonly("dll_settings", &get_dll_settings, "get the dll settings used during capture as a named tuple of (enabled, coarseStep, fineStep, finestStep)")
+        .def_property_readonly("height", &tofcore::Measurement_T::height, "height in pixels of measurement data")
+        .def_property_readonly("horizontal_binning", &tofcore::Measurement_T::horizontal_binning, "get horizontal binning setting used during capture, 0 means no binning, values above 1 indicate the amount of subsampling")
         .def_property_readonly("illuminator_info", &get_illuminator_info, ILLUMINATOR_INFO_DOCSTRING)
+        .def_property_readonly("integration_time", &tofcore::Measurement_T::integration_time, "get integration time setting during capture (uint16_t uS)")
+        .def_property_readonly("meta_data", &get_meta_data_view, "obtain memoryview of the raw block of meta-data associated with the measurement (useful for custom decoding of data not otherwise available via the API)")
+        .def_property_readonly("modulation_frequency", &tofcore::Measurement_T::modulation_frequency, "get modulation frequency (Hz) setting during capture")
+        .def_property_readonly("pixel_size", &tofcore::Measurement_T::pixel_size, "size in bytes of each pixel")
+        .def_property_readonly("sensor_temperatures", &tofcore::Measurement_T::sensor_temperatures, "get imaging sensor temperature data")
         .def_property_readonly("timestamp", &tofcore::Measurement_T::frame_timestamp, "get the frame timestamp (in ms)")
+        .def_property_readonly("vertical_binning", &tofcore::Measurement_T::vertical_binning, "get vertical binning setting used during capture, 0 means no binning, values above 1 indicate the amount of subsampling")
+        .def_property_readonly("width", &tofcore::Measurement_T::width, "width in pixels of measurement data")
         ;
 
 

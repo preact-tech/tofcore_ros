@@ -16,9 +16,15 @@
 #include "Measurement_T.hpp"
 #include <boost/endian/conversion.hpp>
 #include <boost/scope_exit.hpp>
+#include <iomanip>
 #include <iostream>
+#include <list>
+#include <map>
 #include <mutex>
+#include <sstream>
+#include <string>
 #include <thread>
+#include <tuple>
 
 #if !defined(PACK_START)
 #define PACK_START __pragma( pack(push, 1) )
@@ -29,29 +35,76 @@ namespace tofcore {
 
 using namespace std;
 using namespace std::chrono_literals;
+using namespace std::chrono;
 using namespace boost::endian;
 using namespace TofComm;
 
 struct Sensor::Impl
 {
-    Impl(const std::string &uri) :
-        connection(Connection_T::create(ioService, uri)),
+
+public:
+    Impl(const Sensor& sensor, const std::string &uri) :
+        m_sensor(sensor),
+        m_logMsg(std::bind(&Sensor::Impl::default_logger,
+                           this, std::placeholders::_1, std::placeholders::_2)),
+        m_describeCommand(std::bind(&Sensor::Impl::getCmdName,
+                                    this, std::placeholders::_1, std::placeholders::_2)),
+        connection(Connection_T::create(ioService, uri, m_logMsg, m_describeCommand)),
         measurement_timer_(ioService)
     {
+        start_time_ = high_resolution_clock::now();
     }
 
-    Impl(std::unique_ptr<Connection_T> connection) : 
+    Impl(Sensor& sensor, std::unique_ptr<Connection_T> connection) :
+        m_sensor(sensor),
+        m_logMsg(std::bind(&Sensor::Impl::default_logger,
+                           this, std::placeholders::_1, std::placeholders::_2)),
+        m_describeCommand(std::bind(&Sensor::Impl::getCmdName,
+                                    this, std::placeholders::_1, std::placeholders::_2)),
         connection(std::move(connection)),
         measurement_timer_(ioService)
     {
     }
 
+    virtual ~Impl() = default;
+
+    std::tuple<bool, std::string> getCmdName(const uint16_t cmdId, const bool verbose)
+    {
+        return m_sensor.getCmdName(cmdId, verbose);
+    }
+
     void init();
+
+    void default_logger(const std::string& msg, uint32_t level)
+    {
+        if (nullptr == m_sensor.m_log_callback) // no override of log destination by client
+        {
+            high_resolution_clock::time_point now { high_resolution_clock::now() };
+            duration<double> timeSince1stErr { duration_cast<duration<double>>(now - start_time_) };
+            if (0 == level)
+            {
+                std::cerr << "[" << std::fixed << std::setprecision(6) << timeSince1stErr.count() << "] "
+                          << " {ERR} " << msg.c_str() << std::endl;
+            }
+            else if (level <= debug_level_)
+            {
+                std::cout << "[" << std::fixed << std::setprecision(6) << timeSince1stErr.count() << "] "
+                          << msg.c_str() << std::endl;
+            }
+        }
+        else
+        {
+            m_sensor.m_log_callback(msg, level); // Client is responsible for the log
+        }
+    }
 
     boost::asio::io_service ioService;
     std::thread serverThread_;
     std::mutex measurementReadyMutex;
     on_measurement_ready_t measurementReady;
+    const Sensor& m_sensor;
+    log_callback_t m_logMsg;
+    cmd_descr_callback_t m_describeCommand;
     std::unique_ptr<Connection_T> connection;
 
     /// The items below are specifically used for streaming via polling.
@@ -65,6 +118,8 @@ struct Sensor::Impl
     bool stream_via_polling_ { false };
     uint16_t measurement_command_ = 0;
     boost::asio::steady_timer measurement_timer_;
+    high_resolution_clock::time_point start_time_ { };
+    uint32_t debug_level_ { 0 };
 
     /// Method used to initiate streaming of measurement data
     /// 
@@ -85,10 +140,9 @@ struct Sensor::Impl
         }
         else
         {
-            return this->connection->send_receive(this->measurement_command_,
-                                                  &TofComm::CONTINUOUS_MEASUREMENT,
-                                                  sizeof(TofComm::CONTINUOUS_MEASUREMENT),
-                                                  std::chrono::seconds(5)).has_value();
+            uint8_t measurement_type { TofComm::CONTINUOUS_MEASUREMENT };
+            auto ptr = reinterpret_cast<std::byte*>(&measurement_type);
+            return m_sensor.send_receive(measurement_command, {ptr, sizeof(measurement_type)}).has_value();
         }
     }
 
@@ -117,6 +171,45 @@ struct Sensor::Impl
     }
 };
 
+/*
+ * Create a std::map where the key is the command value and the entry is name
+ */
+#undef TOF_CORE_CMD
+#define TOF_CORE_CMD(name,value) {value,#name},
+
+static std::map<uint16_t, const char*> s_tofCoreCommandNames
+{
+    TOF_CORE_CMDS
+};
+
+/**
+ * Convert the numeric command id value to the command name's string.
+ * @return A tuple with the bool indicating whether the command value was a valid
+ *         command and the string being the command name.
+ * @param cmdId The numeric command id value.
+ * @param verbose If true the returned string will also contain the hex representation
+ *                of the cmdId in parentheses.
+ */
+std::tuple<bool, std::string> getTofCoreCmdName(const uint16_t cmdId, const bool verbose)
+{
+    auto nameIt = s_tofCoreCommandNames.find(cmdId);
+    std::string cmdName { };
+    bool foundIt { false };
+    if (nameIt != s_tofCoreCommandNames.end())
+    {
+        cmdName = nameIt->second;
+        foundIt = true;
+    }
+    if (!foundIt || verbose)
+    {
+        std::stringstream ss {};
+        ss << " (0x" << std::hex << std::setfill('0') << std::setw(4) << cmdId << ")";
+        cmdName.append(ss.str());
+    }
+    return std::make_tuple(foundIt, cmdName);
+}
+
+
 /* #########################################################################
  *
  * Sensor Class Implementation
@@ -139,15 +232,15 @@ Sensor::Sensor(const std::string& uri /*= std::string()*/)
 
         connection_uri = devices[0].connector_uri;
     }
-    this->pimpl = std::unique_ptr<Impl>(new Impl(connection_uri));
+    this->pimpl = std::unique_ptr<Impl>(new Impl(*this, connection_uri));
     pimpl->init();
 }
 
 
-Sensor::Sensor(const std::string &portName, uint32_t baudrate) 
+Sensor::Sensor(const std::string &portName, uint32_t baudrate)
 {
     std::string connection_uri = portName;
-    // If no port name given. Find first PreAct device avaiable
+    // If no port name given. Find first PreAct device available
     if (connection_uri.empty()){
 
         // Get all PreAct Devices
@@ -163,13 +256,13 @@ Sensor::Sensor(const std::string &portName, uint32_t baudrate)
     //Add baudrate to uri query parameters
     connection_uri += "?baudrate=";
     connection_uri += std::to_string(baudrate);
-    this->pimpl = std::unique_ptr<Impl>(new Impl(connection_uri));
+    this->pimpl = std::unique_ptr<Impl>(new Impl(*this, connection_uri));
     pimpl->init();
 }
 
 Sensor::Sensor(std::unique_ptr<Connection_T> connection)
 {
-    this->pimpl = std::make_unique<Impl>(std::move(connection));
+    this->pimpl = std::make_unique<Impl>(*this, std::move(connection));
     pimpl->init();
 }
 
@@ -177,6 +270,33 @@ Sensor::~Sensor()
 {
     pimpl->ioService.stop();
     pimpl->serverThread_.join();
+}
+
+uint32_t Sensor::getDebugLevel() const
+{
+    return pimpl->debug_level_;
+}
+
+void Sensor::setDebugLevel(uint32_t level)
+{
+    pimpl->debug_level_ = level;
+}
+
+std::tuple<bool, std::string> Sensor::getCmdName(const uint16_t cmdId, const bool verbose) const
+{
+    return getTofCoreCmdName(cmdId, verbose);
+}
+
+std::optional<uint8_t> Sensor::getFrameCrcState()
+{
+    auto result = this->send_receive(COMMAND_GET_FRAME_CRC_STATE);
+
+    if (!result || (result->size() != sizeof(uint8_t)))
+    {
+        return std::nullopt;
+    }
+    uint8_t state = static_cast<uint8_t>((*result)[0]);
+    return { state };
 }
 
 std::optional<uint32_t> Sensor::getFramePeriodMs()
@@ -235,7 +355,7 @@ std::optional<TofComm::ImuScaledData_T> Sensor::getImuInfo()
     int16_t data;
     int32_t data32;
 
-    auto result = this->send_receive(COMMAND_READ_IMU_INFO);
+    auto result = this->send_receive(COMMAND_IMU_READ_INFO);
     const auto &payload = *result;
 
     if (!result || (result->size() != IMU_DATA_SIZE_BYTES))
@@ -247,27 +367,9 @@ std::optional<TofComm::ImuScaledData_T> Sensor::getImuInfo()
     auto scaleAccel = [&] (int16_t data, int8_t scale) -> int16_t
     {
         float counts {32768};
-        float conversion {1};
+        float conversion {(float)scale / counts};
 
-        switch(scale)
-        {
-            case 0:
-                // 2g scale
-                conversion = 2./counts;
-                break;
-            case 1:
-                // 4g scale
-                conversion = 4./counts;
-                break;
-            case 2:
-                // 8g scale
-                conversion = 8./counts;
-                break;
-            case 3:
-                // 16g scale
-                conversion = 16./counts;
-                break;
-        }
+        //conversion = (float)scale / counts;
 
         // Convert from the raw value and scaled it to milli-g.
         float converted = (data * conversion) * 1000;
@@ -276,16 +378,16 @@ std::optional<TofComm::ImuScaledData_T> Sensor::getImuInfo()
         return (static_cast<int16_t>(converted));
     };
 
-    int8_t accelometerRange = static_cast<int8_t>(payload[offsetof(ImuData_T, accelRange)]);
+    int8_t accelerometerRange = static_cast<int8_t>(payload[offsetof(ImuData_T, accelRange)]);
 
     for (int i = 0, payloadIndex = offsetof(ImuData_T, accel); i < 3; i++, payloadIndex += 2 )
     {
         BE_Get(data, &payload[payloadIndex]);
-        scaledData.accelerometer_millig[i] = scaleAccel(data, accelometerRange); 
+        scaledData.accelerometer_millig[i] = scaleAccel(data, accelerometerRange); 
     }
 
     // Lambda to convert raw gyro value to scaled value of milli-degrees/second.
-    auto scaleGyro = [&] (int16_t data, int8_t scale) -> int16_t
+    auto scaleGyro = [&] (int16_t data, int8_t scale) -> int32_t
     {
         auto counts {32768};
         float conversion {1};
@@ -318,7 +420,7 @@ std::optional<TofComm::ImuScaledData_T> Sensor::getImuInfo()
         float converted = (data * conversion) * 1000;
 
         // Take floating point and convert to an integer.
-        return (static_cast<int16_t>(converted));
+        return (static_cast<int32_t>(converted));
     };
 
     int8_t gyroRange = static_cast<int8_t>(payload[offsetof(ImuData_T, gyroRange)]);
@@ -496,7 +598,7 @@ std::optional<LensIntrinsics_t> Sensor::getLensIntrinsics()
 {
     auto result = this->send_receive(COMMAND_GET_LENS_INFO, (uint8_t)0);
 
-    if (!result || (result->size() != RAW_SENSOR_INFO_DATA_SIZE))
+    if (!result || (result->size() < (RAW_SENSOR_INFO_DATA_SIZE - 2 * sizeof(uint32_t)))) // accept old data w/o hfov/vfov
     {
         return std::nullopt; // failed to get information
     }
@@ -529,7 +631,19 @@ std::optional<LensIntrinsics_t> Sensor::getLensIntrinsics()
         li.m_undistortionCoeffs[n] = i32 / 1.0E8;
         rawPtr += sizeof(i32);
     }
-    return { li };
+    if (result->size() >= RAW_SENSOR_INFO_DATA_SIZE)
+    {
+        // Field of view parameters
+        BE_Get(u32, rawPtr);
+        li.m_hfov = u32 / 1.0E3;
+        rawPtr += sizeof(u32);
+
+        BE_Get(u32, rawPtr);
+        li.m_vfov = u32 / 1.0E3;
+        rawPtr += sizeof(u32);
+    }
+
+    return {li};
 }
 
 bool Sensor::getSensorInfo(TofComm::versionData_t &versionData)
@@ -538,11 +652,11 @@ bool Sensor::getSensorInfo(TofComm::versionData_t &versionData)
     auto ok = bool { result };
     const auto &payload = *result;
 
-    ok &= (payload.size() == sizeof(versionData));
+    ok &= (payload.size() > offsetof(TofComm::versionData_t, m_backpackModule));
 
     if (ok)
     {
-        memcpy((void*) &versionData, (void*) payload.data(), sizeof(versionData));
+        memcpy((void*) &versionData, (void*) payload.data(), std::min(sizeof(versionData), payload.size()));
     }
     return ok;
 }
@@ -670,6 +784,95 @@ bool Sensor::setVsm(const VsmControl_T& vsmControl)
                               {reinterpret_cast<std::byte*>(&vsmPayload), sizeof(VsmControl_T)}).has_value();
 }
 
+std::tuple<int8_t, std::list<uint8_t>> Sensor::imuAccelerometerAvailableRangesInGs()
+{
+    std::list<uint8_t> ranges; 
+
+    auto result = this->send_receive(COMMAND_IMU_ACCELEROMETER_GET_AVAILABLE_RANGES);
+
+    bool commandSuccess = bool {result};
+    
+    if (!commandSuccess)
+    {
+        return std::make_tuple(IMU_SEND_RECEIVE_FAILED, ranges);
+    }
+
+    std::vector<std::byte> r = result.value();
+
+    // skip the first element which is the message id.
+    auto it = r.begin();
+    ++it;
+    for (; it != r.end(); ++it)
+    {
+        uint8_t element = static_cast<uint8_t>(*it);
+        ranges.push_back(element);
+    }
+    return std::make_tuple((int8_t)0, ranges);    
+}
+
+std::tuple<int8_t, uint8_t> Sensor::imuAccelerometerRangeInGs()
+{
+    std::tuple<int8_t, uint8_t> response;
+
+    auto result = this->send_receive(COMMAND_IMU_ACCELEROMETER_GET_RANGE);
+
+    bool commandSuccess = bool {result};
+    
+    if (!commandSuccess)
+    {
+        return std::make_tuple(IMU_SEND_RECEIVE_FAILED, 0);
+    }
+    
+    const auto &payload = *result;
+    return std::make_tuple((int8_t)0, (uint8_t)payload[1]);    
+}
+
+int8_t Sensor::imuAccelerometerRangeInGs(uint8_t rangeInGs)
+{
+    auto result = this->send_receive(COMMAND_IMU_ACCELEROMETER_SET_RANGE, rangeInGs);
+
+    bool commandSuccess = bool {result};
+    if (!commandSuccess)
+    {
+        return IMU_SEND_RECEIVE_FAILED;
+    }
+    
+    const auto &payload = *result;
+    uint8_t returnValue = static_cast<uint8_t>(payload[0]);
+    return returnValue;    
+}
+
+int8_t Sensor::imuAccelerometerSelfTest()
+{
+    auto result = this->send_receive(COMMAND_IMU_ACCELEROMETER_SELF_TEST);
+
+    bool commandSuccess = bool {result};
+    
+    if (!commandSuccess)
+    {
+        return IMU_SEND_RECEIVE_FAILED;
+    }
+    
+    const auto &payload = *result;
+    return static_cast<int8_t>(payload[1]);
+}
+
+int8_t Sensor::imuGyroSelfTest()
+{
+    auto result = this->send_receive(COMMAND_IMU_GYRO_SELF_TEST);
+
+    bool commandSuccess = bool {result};
+    
+    if (!commandSuccess)
+    {
+        return IMU_SEND_RECEIVE_FAILED;
+    }
+    
+    const auto &payload = *result;
+    return static_cast<int8_t>(payload[1]);
+}
+
+
 /**
  * @brief Check if Horizontal flip is active.
  * 
@@ -710,6 +913,33 @@ std::optional<bool> Sensor::isFlipVerticallyActive()
         }
     }
     return std::nullopt;
+}
+
+/**
+ * @brief Check if raw DCS/AMBIENT data is sorted/scaled.
+ *
+ * @return std::optional<bool>: message success/is sorted
+ */
+std::optional<bool> Sensor::isRawDataSorted()
+{
+    bool isSorted { false };
+    auto result = this->send_receive(COMMAND_GET_RAW_DATA_SORT_STATE);
+    if (result)
+    {
+        const auto& answer = *result;
+        if (answer.size() > 0)
+        {
+            isSorted = (*reinterpret_cast<const uint8_t*>(answer.data()) != 0);
+            return isSorted;
+        }
+    }
+    return std::nullopt;
+}
+
+bool Sensor::sortRawData(const bool sortIt)
+{
+    uint8_t byte = (sortIt) ? 1 : 0;
+    return bool{this->send_receive(COMMAND_SET_RAW_DATA_SORT, byte)};
 }
 
 std::optional<SensorControlStatus> Sensor::getSensorControlState()
@@ -779,16 +1009,41 @@ std::optional<uint8_t> Sensor::getBinning()
     return uint8_t{binning};
 }
 
+std::optional<uint16_t> Sensor::getCalVledMv()
+{
+    auto result = this->send_receive(COMMAND_GET_CAL_VLED_MV);
+
+    if (!result)
+    {
+        return std::nullopt;
+    }
+    const auto &payload = *result;
+
+    uint16_t calMv = 0;
+    BE_Get(calMv, &payload[0]);
+    return calMv;
+}
+
 bool Sensor::setFlipHorizontally(bool flip)
 {
     const uint8_t data = (flip ? 1 : 0);
     return bool{this->send_receive(COMMAND_SET_HORIZ_FLIP_STATE, data)};
 }
 
+bool Sensor::setCalVledMv(uint16_t vledMv)
+{
+    return this->send_receive(COMMAND_SET_CAL_VLED_MV, vledMv).has_value();
+}
+
 bool Sensor::setFlipVertically(bool flip)
 {
     const uint8_t data = (flip ? 1 : 0);
     return bool{this->send_receive(COMMAND_SET_VERT_FLIP_STATE, data)};
+}
+
+bool Sensor::setFrameCrcState(uint8_t state)
+{
+    return bool{this->send_receive(COMMAND_SET_FRAME_CRC_STATE, state)};
 }
 
 bool Sensor::setFramePeriodMs(uint32_t periodMs)
@@ -1034,7 +1289,7 @@ void Sensor::Impl::init()
 
             if (usr_callback)
             {
-                auto new_measurement = tofcore::create_measurement(p);
+                auto new_measurement = tofcore::create_measurement(p, m_logMsg);
                 try {
                     usr_callback(new_measurement);
                 } catch(std::exception& err) {
@@ -1046,21 +1301,95 @@ void Sensor::Impl::init()
     connection->subscribe(f);
 }
 
-
-Sensor::send_receive_result_t Sensor::send_receive(const uint16_t command, const std::vector<Sensor::send_receive_payload_t>& payload,
-        std::chrono::steady_clock::duration timeout /*= 5s*/) const
+void Sensor::log_cmd_reply(const uint16_t command, const std::optional<std::vector<std::byte>> reply) const
 {
-    auto result = pimpl->connection->send_receive(command, payload, timeout);
-    if(!result)
+    const auto& [foundIt, cmdName] = getCmdName(command, true);
+    if(!reply)
+    {
+        std::string msg { "ERROR: No valid response for " };
+        msg.append(cmdName);
+        pimpl->default_logger(msg, LOG_LVL_ERROR);
+    }
+    else
+    {
+        uint32_t replySize = reply->size();
+        std::string msg { "Received " };
+        msg.append(std::to_string(replySize)).append(" byte response for ").append(cmdName);
+        if (replySize > 0)
+        {
+            constexpr uint32_t MAX_PAYLOAD_TO_LOG { 16 };
+            std::stringstream ss {};
+            ss << ": {";
+            for (uint32_t i = 0; (i < replySize) && (i < MAX_PAYLOAD_TO_LOG); ++i)
+            {
+                ss << " 0x" << std::hex << std::setfill('0') << std::setw(2) << (unsigned)(*reply)[i];
+            }
+            if (replySize > MAX_PAYLOAD_TO_LOG)
+            {
+                ss << " ... }";
+            }
+            else
+            {
+                ss << " }";
+            }
+            msg.append(ss.str());
+        }
+        pimpl->default_logger(msg, LOG_LVL_INFO);
+    }
+}
+
+void Sensor::log_cmd_send(const uint16_t command, const send_receive_payload_t& payload) const
+{
+    const auto& [foundIt, cmdName] = getCmdName(command, true);
+    const uint32_t payloadSize = payload.size();
+    std::string msg = "Sending command ";
+    msg.append(cmdName).append(" with payload of ").append(std::to_string(payloadSize)).append(" bytes");
+    if (payloadSize > 0)
+    {
+        constexpr uint32_t MAX_PAYLOAD_TO_LOG { 16 };
+        std::stringstream ss {};
+        ss << ": {";
+        for (uint32_t i = 0; (i < payloadSize) && (i < MAX_PAYLOAD_TO_LOG); ++i)
+        {
+            ss << " 0x" << std::hex << std::setfill('0') << std::setw(2) << (unsigned)payload[i];
+        }
+        if (payloadSize > MAX_PAYLOAD_TO_LOG)
+        {
+            ss << " ... }";
+        }
+        else
+        {
+            ss << " }";
+        }
+        msg.append(ss.str());
+    }
+    pimpl->default_logger(msg, LOG_LVL_INFO);
+}
+
+Sensor::send_receive_result_t Sensor::send_receive(const uint16_t command,
+                                                   const std::vector<Sensor::send_receive_payload_t>& payload,
+                                                   std::chrono::steady_clock::duration timeout /*= 5s*/) const
+{
+    for (uint32_t i = 0; i < payload.size(); ++i)
+    {
+        log_cmd_send(command, payload[i]);
+    }
+    auto reply = pimpl->connection->send_receive(command, payload, timeout);
+    log_cmd_reply(command, reply);
+    if(!reply)
     {
         return std::nullopt;
     }
-    return {*result};
+    else
+    {
+        return { *reply };
+    }
 }
 
 
-Sensor::send_receive_result_t Sensor::send_receive(const uint16_t command, const send_receive_payload_t& payload,
-        std::chrono::steady_clock::duration timeout /*= 5s*/) const
+Sensor::send_receive_result_t Sensor::send_receive(const uint16_t command,
+                                                   const send_receive_payload_t& payload,
+                                                   std::chrono::steady_clock::duration timeout /*= 5s*/) const
 {
     const std::vector<Sensor::send_receive_payload_t> one{payload};
     return this->send_receive(command, one, timeout);
