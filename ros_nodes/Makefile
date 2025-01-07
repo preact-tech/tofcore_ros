@@ -77,5 +77,5 @@ clean:
 	rm -r -f *.zsync
 .PHONY: clobber
 clobber: clean
-	rm -rf ros2/tofcore_ros/libtofcore ros1/tofcore_ros/libtofcore algorithm ros2/algorithm
+	rm -rf ros2/tofcore_ros/libtofcore ros1/src/libtofcore 
 	rm -r -f ros1_bridge
