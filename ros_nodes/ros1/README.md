@@ -24,14 +24,12 @@ make ros1
 
 Stream a single sensor with the following command:
 ```
-cd ros1
-source ./install/setup.bash
-roslaunch ros1/tofcore_ros/launch/tofcore.launch 
+source ros1/devel/setup.bash
+roslaunch tofcore_ros1 tofcore.launch
 ```
 
 Stream two sensor with the following command:
 ```
-cd ros1
-source ./install/setup.bash
-roslaunch ros1/tofcore_ros/launch/tofcore_dual.launch 
+source ros1/devel/setup.bash
+roslaunch tofcore_ros1 tofcore_dual.launch 
 ```

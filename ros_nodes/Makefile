@@ -33,20 +33,20 @@ provision_bridge: provision ##	Install required tools, packages and git repos to
 	- git clone -b master https://github.com/ros2/ros1_bridge.git
 
 .PHONY: provision_ros1
-provision_ros1: provision ##	Install required tools, packages and git repos to build the truenense package as well as the ROS bridge package
+provision_ros1: provision_ros1 ##	Install required tools, packages and git repos to build the truenense package as well as the ROS bridge package
 	sudo sh -c 'echo "deb http://packages.ros.org/ros/ubuntu $(TARGET_DISTRO_VER) main" > /etc/apt/sources.list.d/ros-noetic.list'
 	curl -s https://raw.githubusercontent.com/ros/rosdistro/master/ros.asc | sudo apt-key add -
-	sudo apt update && sudo apt install -y ros-noetic-desktop-full python3-catkin-pkg libgmock-dev
-	cd ros1 && ln -fs ../../libtofcore tofcore_ros/libtofcore
+	sudo apt update && sudo apt install -y ros-noetic-desktop-full ros-noetic-catkin python3-catkin-pkg python3-catkin-tools libgmock-dev
+	cd ros1 && ln -fs ../../libtofcore src/libtofcore
 
 
 .PHONY: ros2
 ros2:
-	 export PREACT_CPPCHECK_ENABLE="OFF" && cd ros2 && colcon build --packages-skip ros1_bridge preact_alg detection_py lens_calibration 
+	 export PREACT_CPPCHECK_ENABLE="OFF" && cd ros2 && colcon build --packages-skip ros1_bridge 
 	 
 .PHONY: ros1
 ros1:
-	 export PREACT_CPPCHECK_ENABLE="OFF" && cd ros1 &&  source /opt/ros/noetic/setup.bash && colcon build
+	 export PREACT_CPPCHECK_ENABLE="OFF" && cd ros1 &&  source /opt/ros/noetic/setup.bash && catkin build
 
 .PHONY: bridge
 bridge: build ##	Build the ROS1 bridge, build environment must have both ROS1 and ROS2 installed
@@ -61,7 +61,7 @@ clean:
 	rm -r -f ros2/install
 	rm -r -f ros2/log
 	rm -r -f ros1/build
-	rm -r -f ros1/install
+	rm -r -f ros1/devel
 	rm -r -f ros1/log
 	rm -r -f target
 	rm -r -f ros2/debian
