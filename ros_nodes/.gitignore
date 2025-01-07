@@ -129,7 +129,9 @@ src/image_pipeline
 build/
 install/
 log/
-
+logs/
+devel/
+.catkin_tools/
 # Calibration and simulation files
 *.h5
 

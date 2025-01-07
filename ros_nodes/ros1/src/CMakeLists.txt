@@ -147,7 +147,7 @@ include_directories(
 ## Declare a C++ executable
 ## With catkin_make all packages are built within a single CMake context
 ## The recommended prefix ensures that target names across packages don't collide
-add_executable(tof_sensor src/sensor_node.cpp src/main.cpp)
+add_executable(tof_sensor tofcore_ros/sensor_node.cpp tofcore_ros/main.cpp)
 target_include_directories(tof_sensor PUBLIC
   $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
   $<INSTALL_INTERFACE:include>
